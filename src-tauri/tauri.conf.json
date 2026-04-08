@@ -38,10 +38,7 @@
     ],
     "windows": {
       "nsis": {
-        "installMode": "currentUser",
-        "displayLanguageSelector": false,
-        "languages": ["Russian", "English"],
-        "shortcutName": "RPWorld Launcher"
+        "installMode": "currentUser"
       }
     }
   }
