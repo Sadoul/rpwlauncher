@@ -7,6 +7,7 @@ import ParticlesBg from "./components/ParticlesBg";
 import AuthPanel from "./components/AuthPanel";
 import GamePanel from "./components/GamePanel";
 import SettingsPanel from "./components/SettingsPanel";
+import UpdateOverlay from "./components/UpdateOverlay";
 
 interface Account {
   username: string;
@@ -26,6 +27,9 @@ interface UpdateInfo {
   latest_version: string;
   update_available: boolean;
   download_url: string;
+  installer_url: string;
+  release_notes: string;
+  file_size: number;
 }
 
 const STORAGE_KEYS = {
@@ -42,6 +46,7 @@ export default function App() {
   const [javaVersion, setJavaVersion] = useState("");
   const [maxMemory, setMaxMemory] = useState(4096);
   const [notification, setNotification] = useState("");
+  const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
 
   useEffect(() => {
     initializeApp();
@@ -60,40 +65,30 @@ export default function App() {
 
       if (savedMemory) {
         const memory = parseInt(savedMemory);
-        if (!isNaN(memory)) {
-          setMaxMemory(Math.max(1024, Math.min(32768, memory)));
-        }
+        if (!isNaN(memory)) setMaxMemory(Math.max(1024, Math.min(32768, memory)));
       }
-
       if (savedJavaPath) setJavaPath(savedJavaPath);
       if (savedJavaVersion) setJavaVersion(savedJavaVersion);
 
       // Check saved account
       const savedAccount = await invoke<Account | null>("get_saved_account");
-      if (savedAccount) {
-        setAccount(savedAccount);
-      }
+      if (savedAccount) setAccount(savedAccount);
 
       // Auto-find Java if not saved
       if (!savedJavaPath) {
         try {
           const javaInfo = await invoke<JavaInfo>("find_java");
-          if (javaInfo.found) {
-            handleJavaChange(javaInfo.path, javaInfo.version);
-          }
+          if (javaInfo.found) handleJavaChange(javaInfo.path, javaInfo.version);
         } catch {
-          // ignore java detection errors on startup
+          // ignore
         }
       }
 
-      // Check launcher updates
+      // Check launcher updates — show beautiful overlay if available
       try {
         const updateInfo = await invoke<UpdateInfo>("check_launcher_update");
         if (updateInfo.update_available) {
-          setNotification(
-            `Доступно обновление ${updateInfo.latest_version}. Откройте настройки для обновления.`
-          );
-          setTimeout(() => setNotification(""), 7000);
+          setPendingUpdate(updateInfo);
         }
       } catch {
         // ignore update errors
@@ -107,16 +102,14 @@ export default function App() {
 
   const handleLogin = (newAccount: Account) => {
     setAccount(newAccount);
-    setNotification(`Добро пожаловать, ${newAccount.username}!`);
-    setTimeout(() => setNotification(""), 3000);
+    showNotification(`Добро пожаловать, ${newAccount.username}!`);
   };
 
   const handleLogout = async () => {
     try {
       await invoke("logout");
       setAccount(null);
-      setNotification("Вы вышли из аккаунта");
-      setTimeout(() => setNotification(""), 3000);
+      showNotification("Вы вышли из аккаунта");
     } catch (err) {
       console.error("Logout failed:", err);
     }
@@ -129,9 +122,17 @@ export default function App() {
     localStorage.setItem(STORAGE_KEYS.javaVersion, version);
   };
 
+  const showNotification = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(""), 3500);
+  };
+
   if (loading) {
     return (
-      <div className="app-container" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div
+        className="app-container"
+        style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
         <ParticlesBg />
         <motion.div
           style={{
@@ -139,14 +140,42 @@ export default function App() {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 16,
+            gap: 20,
           }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
         >
-          <div className="spinner" style={{ width: 36, height: 36, borderWidth: 3 }} />
-          <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>Загрузка RPWorld Launcher...</div>
+          {/* Animated logo */}
+          <motion.div
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: "18px",
+              background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 22,
+              fontWeight: 800,
+              color: "white",
+              letterSpacing: 2,
+              boxShadow: "0 0 40px rgba(124,58,237,0.4)",
+            }}
+            animate={{
+              boxShadow: [
+                "0 0 20px rgba(124,58,237,0.3)",
+                "0 0 50px rgba(124,58,237,0.6)",
+                "0 0 20px rgba(124,58,237,0.3)",
+              ],
+            }}
+            transition={{ duration: 2, repeat: Infinity }}
+          >
+            RPW
+          </motion.div>
+          <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>
+            Загрузка...
+          </div>
         </motion.div>
       </div>
     );
@@ -155,6 +184,16 @@ export default function App() {
   return (
     <div className="app-container">
       <ParticlesBg />
+
+      {/* Beautiful update overlay — shown on top of everything */}
+      <AnimatePresence>
+        {pendingUpdate && (
+          <UpdateOverlay
+            updateInfo={pendingUpdate}
+            onSkip={() => setPendingUpdate(null)}
+          />
+        )}
+      </AnimatePresence>
 
       <Titlebar />
 
@@ -209,13 +248,14 @@ export default function App() {
         </div>
       </div>
 
+      {/* Toast notification */}
       <AnimatePresence>
         {notification && (
           <motion.div
             className="notification"
-            initial={{ opacity: 0, y: 20, x: 20 }}
+            initial={{ opacity: 0, y: 16, x: 16 }}
             animate={{ opacity: 1, y: 0, x: 0 }}
-            exit={{ opacity: 0, y: 20, x: 20 }}
+            exit={{ opacity: 0, y: 16, x: 16 }}
             transition={{ duration: 0.25 }}
           >
             {notification}

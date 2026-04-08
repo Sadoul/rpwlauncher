@@ -45,19 +45,32 @@ jobs:
           cargo build --release --target x86_64-pc-windows-msvc
           Set-Location ..
 
-      - name: Build Tauri app (NSIS installer)
+      - name: Build Tauri app (NSIS installer + bare exe)
         run: npm run tauri build -- --bundles nsis
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
-      - name: Find built files
-        id: find_files
+      - name: Prepare release assets
+        id: assets
         shell: pwsh
         run: |
+          # NSIS installer
           $installer = Get-ChildItem -Recurse -Path "src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
-          $stub = "stub/target/x86_64-pc-windows-msvc/release/RPWorld-Launcher.exe"
           echo "INSTALLER_PATH=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+
+          # Bare app exe (for fast delta updates — just replaces the binary)
+          $bareExe = "src-tauri/target/release/RPWorld Launcher.exe"
+          if (Test-Path $bareExe) {
+            $destBare = "src-tauri/target/release/RPWorld-Launcher-app.exe"
+            Copy-Item $bareExe $destBare
+            echo "BARE_EXE_PATH=$destBare" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "BARE_EXE_PATH=" >> $env:GITHUB_OUTPUT
+          }
+
+          # Stub exe (installer + shortcut in one)
+          $stub = "stub/target/x86_64-pc-windows-msvc/release/RPWorld-Launcher.exe"
           echo "STUB_PATH=$stub" >> $env:GITHUB_OUTPUT
 
       - name: Create GitHub Release
@@ -70,26 +83,28 @@ jobs:
 
             ---
 
-            ### Скачай и используй как ярлык
+            ### Как установить и запустить
 
             **`RPWorld-Launcher.exe`** — скачай один раз, положи на рабочий стол.
-            - Если лаунчер **не установлен** — автоматически скачает и установит
-            - Если лаунчер **уже установлен** — сразу запустит его
+            - Лаунчер **не установлен** → автоматически скачает и установит
+            - Лаунчер **установлен** → мгновенно запустит
+            - **Обновление** → красивый встроенный интерфейс обновления
 
             ---
 
-            ### Полный установщик (для ручной установки)
+            ### Полный установщик
 
             `RPWorld.Launcher_${{ github.ref_name }}_x64-setup.exe` — стандартный NSIS установщик
 
             ---
 
             ### Данные лаунчера
-            Хранятся в: `%APPDATA%\.rpworld`
+            `%APPDATA%\.rpworld`
 
             mc_version: 1.20.1
           files: |
-            ${{ steps.find_files.outputs.INSTALLER_PATH }}
-            ${{ steps.find_files.outputs.STUB_PATH }}
+            ${{ steps.assets.outputs.INSTALLER_PATH }}
+            ${{ steps.assets.outputs.STUB_PATH }}
+            ${{ steps.assets.outputs.BARE_EXE_PATH }}
           draft: false
           prerelease: false
