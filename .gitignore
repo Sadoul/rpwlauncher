@@ -3,7 +3,8 @@ node_modules/
 dist/
 .env
 
-# Rust / Tauri
+# Rust / Tauri (Cargo workspace — общий target в корне)
+target/
 src-tauri/target/
 src-tauri/gen/
 stub/src-tauri/target/

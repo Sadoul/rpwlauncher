@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a GitHub release?'
+        required: false
+        default: 'false'
 
 jobs:
   build-windows:
@@ -25,19 +30,19 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
+      # ---- Специализированный Rust-кэш (Swatinem) ----
+      # После первой сборки следующие занимают 2-4 мин вместо 15-20
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-            stub/src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          # Кэшируем оба Cargo-проекта (но target общий через workspace)
+          workspaces: |
+            src-tauri -> target
+            stub/src-tauri -> target
+          cache-on-failure: true
+          shared-key: "rpw-windows-${{ runner.os }}"
 
-      # ---- Build Main Launcher ----
+      # ---- Сборка главного приложения ----
       - name: Install main app dependencies
         run: npm ci
 
@@ -48,88 +53,95 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      # ---- Build Stub / Shortcut launcher ----
+      # ---- Сборка stub (только бинарник, без NSIS — вдвое быстрее) ----
       - name: Install stub dependencies
         working-directory: stub
         run: npm ci
 
-      - name: Build stub Tauri app
+      - name: Build stub binary (no bundling)
         working-directory: stub
-        run: npm run tauri build
+        run: npm run tauri -- build --bundles none
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      # ---- Find built artifacts ----
+      # ---- Поиск артефактов ----
       - name: Find NSIS installer
-        id: find_nsis
+        id: nsis
         shell: pwsh
         run: |
-          $nsis = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($nsis) {
-            echo "NSIS_PATH=$($nsis.FullName)" >> $env:GITHUB_OUTPUT
-            echo "NSIS_NAME=$($nsis.Name)" >> $env:GITHUB_OUTPUT
-            Write-Host "Found NSIS: $($nsis.FullName)"
-          } else {
-            Write-Error "NSIS installer not found!"
-            exit 1
+          # Ищем в src-tauri/target (без workspace) и в target/ (с workspace)
+          $dirs = @(
+            "src-tauri\target\release\bundle\nsis",
+            "target\release\bundle\nsis"
+          )
+          foreach ($d in $dirs) {
+            if (Test-Path $d) {
+              $f = Get-ChildItem $d -Filter "*-setup.exe" | Select-Object -First 1
+              if ($f) {
+                "NSIS_PATH=$($f.FullName)" >> $env:GITHUB_OUTPUT
+                Write-Host "NSIS found: $($f.FullName)"
+                exit 0
+              }
+            }
           }
+          Write-Error "NSIS installer not found in any expected location!"
+          exit 1
 
-      - name: Find stub EXE
-        id: find_stub
+      - name: Prepare stub exe (RPWorld-Launcher.exe)
+        id: stub
         shell: pwsh
         run: |
-          # Look for the stub's built exe (the actual app binary, not the installer)
-          $stubExe = Get-ChildItem -Recurse "stub/src-tauri/target/release" -Filter "rpw-stub.exe" -ErrorAction SilentlyContinue | 
-            Where-Object { $_.FullName -notmatch "\\build\\" -and $_.FullName -notmatch "\\deps\\" } | 
-            Select-Object -First 1
-          if (-not $stubExe) {
-            # Fallback: find the NSIS installer for stub and extract or use another name
-            $stubExe = Get-ChildItem -Recurse "stub/src-tauri/target/release" -Filter "*.exe" -ErrorAction SilentlyContinue | 
-              Where-Object { $_.Name -notmatch "setup" -and $_.FullName -notmatch "\\build\\" -and $_.FullName -notmatch "\\deps\\" } |
-              Select-Object -First 1
+          $candidates = @(
+            "stub\src-tauri\target\release\rpw-stub.exe",
+            "target\release\rpw-stub.exe"
+          )
+          foreach ($p in $candidates) {
+            if (Test-Path $p) {
+              Copy-Item $p "RPWorld-Launcher.exe" -Force
+              "STUB_PATH=RPWorld-Launcher.exe" >> $env:GITHUB_OUTPUT
+              Write-Host "Stub found: $p"
+              exit 0
+            }
           }
-          if ($stubExe) {
-            # Copy and rename to RPWorld-Launcher.exe
-            $dest = "stub/src-tauri/target/release/RPWorld-Launcher.exe"
-            Copy-Item $stubExe.FullName $dest -Force
-            echo "STUB_PATH=$dest" >> $env:GITHUB_OUTPUT
-            Write-Host "Found stub: $($stubExe.FullName)"
-          } else {
-            Write-Error "Stub exe not found!"
-            exit 1
-          }
+          Write-Error "Stub binary not found!"
+          exit 1
 
-      # ---- Publish Release ----
-      - name: Extract version from tag
-        id: version
+      # ---- Версия ----
+      - name: Get version
+        id: ver
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          $ver = $tag -replace '^v', ''
-          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
+          $v = "${{ github.ref_name }}" -replace '^v', ''
+          if ([string]::IsNullOrEmpty($v) -or $v -eq 'main') {
+            # Fallback: read from tauri.conf.json
+            $conf = Get-Content "src-tauri\tauri.conf.json" | ConvertFrom-Json
+            $v = $conf.version
+          }
+          "VERSION=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $v"
 
-      - name: Create GitHub Release and upload assets
+      # ---- Публикация релиза (только при push тега) ----
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: "RPWorld Launcher v${{ steps.version.outputs.VERSION }}"
+          name: "RPWorld Launcher v${{ steps.ver.outputs.VERSION }}"
           body: |
-            ## RPWorld Launcher v${{ steps.version.outputs.VERSION }}
+            ## RPWorld Launcher v${{ steps.ver.outputs.VERSION }}
 
-            ### Скачать
+            ### Что скачать
             | Файл | Описание |
-            |------|----------|
-            | `RPWorld-Launcher.exe` | **Рекомендуется** — красивый установщик с автоматическим запуском |
-            | `RPWorld.Launcher_*_x64-setup.exe` | Полный NSIS установщик |
+            |---|---|
+            | **`RPWorld-Launcher.exe`** | ⬅ **Рекомендуется** — красивый установщик, запускает или устанавливает автоматически |
+            | `RPWorld.Launcher_*_x64-setup.exe` | Прямой NSIS установщик |
 
-            ### Установка
-            1. Скачай `RPWorld-Launcher.exe`
-            2. Запусти — он сам скачает и установит лаунчер или запустит его если уже установлен
+            > **Source code (zip/tar.gz)** — это исходный код, не для пользователей
           draft: false
           prerelease: false
           files: |
-            ${{ steps.find_nsis.outputs.NSIS_PATH }}
-            ${{ steps.find_stub.outputs.STUB_PATH }}
+            ${{ steps.nsis.outputs.NSIS_PATH }}
+            ${{ steps.stub.outputs.STUB_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
