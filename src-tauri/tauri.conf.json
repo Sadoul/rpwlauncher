@@ -39,9 +39,9 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "installerHooks": "nsis/installer-hooks.nsi",
+        "installerHooks": "nsis/installer-hooks.nsh",
         "displayLanguageSelector": false,
-        "shortcutName": "RPWorld Launcher"
+        "startMenuFolder": "RPWorld Launcher"
       }
     }
   }

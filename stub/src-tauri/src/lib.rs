@@ -2,7 +2,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 const GITHUB_REPO: &str = "Sadoul/rpwlauncher";
 const INSTALLER_ASSET_SUFFIX: &str = "_x64-setup.exe";
