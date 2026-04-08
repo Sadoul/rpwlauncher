@@ -1,3 +1,0 @@
-[workspace]
-members = ["src-tauri", "stub/src-tauri"]
-resolver = "2"
