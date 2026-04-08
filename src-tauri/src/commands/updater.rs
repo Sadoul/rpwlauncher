@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -22,9 +23,7 @@ fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
             .filter_map(|s| s.parse::<u32>().ok())
             .collect::<Vec<_>>()
     };
-    let va = parse(a);
-    let vb = parse(b);
-    va.cmp(&vb)
+    parse(a).cmp(&parse(b))
 }
 
 #[tauri::command]
@@ -56,26 +55,21 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
         });
     }
 
-    let release: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-
+    let release: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
     let tag = release["tag_name"]
         .as_str()
         .unwrap_or(CURRENT_VERSION)
         .to_string();
-
     let latest_clean = tag.trim_start_matches('v').to_string();
 
-    // Find NSIS exe installer in assets
     let download_url = release["assets"]
         .as_array()
         .and_then(|assets| {
             assets.iter().find_map(|a| {
                 let name = a["name"].as_str().unwrap_or("");
-                // NSIS installer ends with _x64-setup.exe
-                if name.ends_with("_x64-setup.exe") || name.ends_with("-setup.exe") || (name.ends_with(".exe") && !name.contains("debug")) {
+                if (name.ends_with("_x64-setup.exe") || name.ends_with("-setup.exe"))
+                    && !name.contains("debug")
+                {
                     a["browser_download_url"].as_str().map(|s| s.to_string())
                 } else {
                     None
@@ -86,7 +80,7 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
 
     let release_notes = release["body"]
         .as_str()
-        .unwrap_or("Нет описания")
+        .unwrap_or("")
         .to_string();
 
     let update_available = !download_url.is_empty()
@@ -102,7 +96,7 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
 }
 
 #[tauri::command]
-pub async fn update_launcher() -> Result<String, String> {
+pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
     let info = check_launcher_update().await?;
 
     if !info.update_available {
@@ -114,28 +108,59 @@ pub async fn update_launcher() -> Result<String, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    // Download new installer to temp
     let response = client
         .get(&info.download_url)
         .send()
         .await
         .map_err(|e| format!("Ошибка скачивания: {}", e))?;
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
 
     let temp_dir = std::env::temp_dir();
-    let installer_path: PathBuf = temp_dir.join(format!("rpw-update-{}.exe", info.latest_version));
-
+    let installer_path = temp_dir.join(format!("rpw-update-{}.exe", info.latest_version));
     fs::write(&installer_path, &bytes).map_err(|e| e.to_string())?;
 
-    // Launch the installer and exit — it handles updating automatically (NSIS /S flag for silent update)
-    Command::new(&installer_path)
-        .arg("/S") // silent NSIS install
+    // Write a small batch script that:
+    // 1. Waits for the launcher process to exit
+    // 2. Runs the installer silently
+    // 3. Launches the newly installed launcher
+    let launcher_exe = std::env::current_exe()
+        .unwrap_or_else(|_| PathBuf::from("RPWorld Launcher.exe"));
+
+    let install_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("Programs")
+        .join("RPWorld Launcher")
+        .join("RPWorld Launcher.exe");
+
+    let batch_path = temp_dir.join("rpw_update.bat");
+    let batch_content = format!(
+        "@echo off\r\n\
+        timeout /t 2 /nobreak >nul\r\n\
+        taskkill /f /im \"RPWorld Launcher.exe\" >nul 2>&1\r\n\
+        timeout /t 1 /nobreak >nul\r\n\
+        \"{installer}\" /S\r\n\
+        timeout /t 5 /nobreak >nul\r\n\
+        if exist \"{launcher}\" start \"\" \"{launcher}\"\r\n\
+        del \"%~f0\"\r\n",
+        installer = installer_path.to_string_lossy(),
+        launcher = install_dir.to_string_lossy(),
+    );
+
+    {
+        let mut f = fs::File::create(&batch_path).map_err(|e| e.to_string())?;
+        f.write_all(batch_content.as_bytes()).map_err(|e| e.to_string())?;
+    }
+
+    // Run the batch in background and exit the app
+    Command::new("cmd")
+        .args(["/c", "start", "/min", "", batch_path.to_str().unwrap_or("")])
         .spawn()
-        .map_err(|e| format!("Не удалось запустить установщик: {}", e))?;
+        .map_err(|e| format!("Не удалось запустить обновление: {}", e))?;
+
+    // Give the batch a moment to start, then close the app
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    app.exit(0);
 
     Ok("update_started".to_string())
 }
