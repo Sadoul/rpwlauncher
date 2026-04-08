@@ -10,18 +10,18 @@ pub struct UpdateInfo {
     pub current_version: String,
     pub latest_version: String,
     pub update_available: bool,
-    pub download_url: String,    // URL голого .exe для быстрого обновления
-    pub installer_url: String,   // URL NSIS установщика (для stub при первой установке)
+    pub download_url: String,
+    pub installer_url: String,
     pub release_notes: String,
     pub file_size: u64,
 }
 
 #[derive(Debug, Serialize, Clone)]
 pub struct UpdateProgress {
-    pub stage: String,        // "checking" | "downloading" | "applying" | "done" | "error"
+    pub stage: String,
     pub downloaded: u64,
     pub total: u64,
-    pub speed_kb: u64,        // KB/s
+    pub speed_kb: u64,
     pub message: String,
 }
 
@@ -70,27 +70,30 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
     }
 
     let release: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
-    let tag = release["tag_name"].as_str().unwrap_or(CURRENT_VERSION).to_string();
+    let tag = release["tag_name"]
+        .as_str()
+        .unwrap_or(CURRENT_VERSION)
+        .to_string();
     let latest_clean = tag.trim_start_matches('v').to_string();
 
     let assets = release["assets"].as_array().cloned().unwrap_or_default();
 
-    // Find bare exe (just the app binary, no installer) — fastest download
     let mut download_url = String::new();
     let mut installer_url = String::new();
     let mut file_size: u64 = 0;
 
     for asset in &assets {
         let name = asset["name"].as_str().unwrap_or("");
-        let url = asset["browser_download_url"].as_str().unwrap_or("").to_string();
+        let url = asset["browser_download_url"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         let size = asset["size"].as_u64().unwrap_or(0);
 
-        // Bare exe for fast updates (published as RPWorld-Launcher-app.exe)
         if name == "RPWorld-Launcher-app.exe" {
             download_url = url.clone();
             file_size = size;
         }
-        // NSIS installer as fallback
         if name.ends_with("_x64-setup.exe") && !name.contains("debug") {
             installer_url = url.clone();
             if download_url.is_empty() {
@@ -99,7 +102,6 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
         }
     }
 
-    // If no bare exe, fall back to NSIS installer URL for update too
     if download_url.is_empty() {
         download_url = installer_url.clone();
     }
@@ -127,14 +129,19 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
         return Ok("no_update".to_string());
     }
 
-    let emit = |stage: &str, downloaded: u64, total: u64, speed: u64, msg: &str| {
-        let _ = app.emit("update-progress", UpdateProgress {
-            stage: stage.to_string(),
-            downloaded,
-            total,
-            speed_kb: speed,
-            message: msg.to_string(),
-        });
+    // Helper closure that emits progress events
+    let app_ref = app.clone();
+    let emit = move |stage: &str, downloaded: u64, total: u64, speed: u64, msg: &str| {
+        let _ = app_ref.emit(
+            "update-progress",
+            UpdateProgress {
+                stage: stage.to_string(),
+                downloaded,
+                total,
+                speed_kb: speed,
+                message: msg.to_string(),
+            },
+        );
     };
 
     emit("downloading", 0, info.file_size, 0, "Начало скачивания...");
@@ -161,7 +168,7 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
     };
     let download_path = temp_dir.join(&dl_filename);
 
-    // Stream download with progress
+    // Stream with progress
     use futures_util::StreamExt;
     let mut stream = response.bytes_stream();
     let mut downloaded: u64 = 0;
@@ -174,7 +181,7 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
         downloaded += chunk.len() as u64;
 
         let elapsed = start_time.elapsed().as_secs_f64();
-        let speed_kb = if elapsed > 0.0 {
+        let speed_kb = if elapsed > 0.1 {
             (downloaded as f64 / elapsed / 1024.0) as u64
         } else {
             0
@@ -182,33 +189,35 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
 
         let mb_done = downloaded as f64 / 1_048_576.0;
         let mb_total = total as f64 / 1_048_576.0;
-        let msg = format!("Скачивание... {:.1}/{:.1} МБ", mb_done, mb_total);
-        emit("downloading", downloaded, total, speed_kb, &msg);
+        emit(
+            "downloading",
+            downloaded,
+            total,
+            speed_kb,
+            &format!("Скачивание... {:.1}/{:.1} МБ", mb_done, mb_total),
+        );
     }
     drop(file);
 
     emit("applying", total, total, 0, "Применение обновления...");
 
     if is_bare_exe {
-        // Optimized update: just replace the exe file
-        apply_exe_update(&app, &download_path, &info.latest_version)?;
+        // Fast: replace only the binary
+        apply_exe_update(app, &download_path)?;
     } else {
-        // Fallback: run NSIS installer silently via batch script
-        apply_nsis_update(&app, &download_path)?;
+        // Fallback: NSIS silent install
+        apply_nsis_update(app, &download_path)?;
     }
 
     Ok("update_started".to_string())
 }
 
-/// Fast update: replace only the main exe binary (no NSIS, no registry changes)
-fn apply_exe_update(app: &tauri::AppHandle, new_exe: &PathBuf, version: &str) -> Result<(), String> {
-    let current_exe = std::env::current_exe()
-        .map_err(|e| e.to_string())?;
+/// Fast update — replaces only the .exe binary, no reinstall needed
+fn apply_exe_update(app: tauri::AppHandle, new_exe: &PathBuf) -> Result<(), String> {
+    let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
 
-    let current_dir = current_exe.parent()
-        .ok_or("Cannot get exe directory")?;
+    let current_dir = current_exe.parent().ok_or("Cannot get exe directory")?;
 
-    // Copy new exe next to current one (as _new.exe)
     let new_target = current_dir.join("RPWorld Launcher_new.exe");
     fs::copy(new_exe, &new_target).map_err(|e| e.to_string())?;
     let _ = fs::remove_file(new_exe);
@@ -216,30 +225,22 @@ fn apply_exe_update(app: &tauri::AppHandle, new_exe: &PathBuf, version: &str) ->
     let install_path = current_exe.to_string_lossy().to_string();
     let new_path = new_target.to_string_lossy().to_string();
 
-    // Write batch: wait → rename new over old → launch new
     let batch_path = std::env::temp_dir().join("rpw_apply_update.bat");
     let batch = format!(
-        "@echo off\r\n\
-        timeout /t 2 /nobreak >nul\r\n\
-        move /y \"{new}\" \"{current}\"\r\n\
-        timeout /t 1 /nobreak >nul\r\n\
-        start \"\" \"{current}\"\r\n\
-        del \"%~f0\"\r\n",
+        "@echo off\r\ntimeout /t 2 /nobreak >nul\r\nmove /y \"{new}\" \"{current}\"\r\ntimeout /t 1 /nobreak >nul\r\nstart \"\" \"{current}\"\r\ndel \"%~f0\"\r\n",
         new = new_path,
         current = install_path,
     );
 
-    {
-        let mut f = fs::File::create(&batch_path).map_err(|e| e.to_string())?;
-        f.write_all(batch.as_bytes()).map_err(|e| e.to_string())?;
-    }
+    fs::write(&batch_path, batch.as_bytes()).map_err(|e| e.to_string())?;
 
     Command::new("cmd")
         .args(["/c", "start", "/min", "", batch_path.to_str().unwrap_or("")])
         .spawn()
-        .map_err(|e| format!("Не удалось запустить обновление: {}", e))?;
+        .map_err(|e| e.to_string())?;
 
-    tokio::runtime::Handle::current().spawn(async move {
+    // Exit the current process after a short delay so batch can start
+    tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
         app.exit(0);
     });
@@ -247,8 +248,8 @@ fn apply_exe_update(app: &tauri::AppHandle, new_exe: &PathBuf, version: &str) ->
     Ok(())
 }
 
-/// Fallback: run NSIS installer silently
-fn apply_nsis_update(app: &tauri::AppHandle, installer: &PathBuf) -> Result<(), String> {
+/// Fallback update via NSIS silent installer
+fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), String> {
     let installer_str = installer.to_string_lossy().to_string();
     let install_dir = dirs::data_local_dir()
         .unwrap_or_default()
@@ -259,28 +260,19 @@ fn apply_nsis_update(app: &tauri::AppHandle, installer: &PathBuf) -> Result<(), 
 
     let batch_path = std::env::temp_dir().join("rpw_nsis_update.bat");
     let batch = format!(
-        "@echo off\r\n\
-        timeout /t 2 /nobreak >nul\r\n\
-        \"{installer}\" /S\r\n\
-        timeout /t 4 /nobreak >nul\r\n\
-        if exist \"{launcher}\" start \"\" \"{launcher}\"\r\n\
-        del \"{installer}\"\r\n\
-        del \"%~f0\"\r\n",
+        "@echo off\r\ntimeout /t 2 /nobreak >nul\r\n\"{installer}\" /S\r\ntimeout /t 4 /nobreak >nul\r\nif exist \"{launcher}\" start \"\" \"{launcher}\"\r\ndel \"{installer}\"\r\ndel \"%~f0\"\r\n",
         installer = installer_str,
         launcher = launch_path,
     );
 
-    {
-        let mut f = fs::File::create(&batch_path).map_err(|e| e.to_string())?;
-        f.write_all(batch.as_bytes()).map_err(|e| e.to_string())?;
-    }
+    fs::write(&batch_path, batch.as_bytes()).map_err(|e| e.to_string())?;
 
     Command::new("cmd")
         .args(["/c", "start", "/min", "", batch_path.to_str().unwrap_or("")])
         .spawn()
-        .map_err(|e| format!("Не удалось запустить установщик: {}", e))?;
+        .map_err(|e| e.to_string())?;
 
-    tokio::runtime::Handle::current().spawn(async move {
+    tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
         app.exit(0);
     });
