@@ -38,6 +38,41 @@ fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
     parse(a).cmp(&parse(b))
 }
 
+/// Find the installed launcher exe using registry (same logic as stub)
+fn find_installed_exe() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(key) = hkcu.open_subkey(
+            r"Software\Microsoft\Windows\CurrentVersion\Uninstall\RPWorld Launcher",
+        ) {
+            if let Ok(raw) = key.get_value::<String, _>("InstallLocation") {
+                let dir = raw.trim_matches('"');
+                let exe = PathBuf::from(dir).join("rpw-launcher.exe");
+                if exe.exists() {
+                    return Some(exe);
+                }
+            }
+        }
+    }
+
+    // Fallback: default Tauri NSIS path — %LOCALAPPDATA%\RPWorld Launcher\rpw-launcher.exe
+    let candidates = [
+        dirs::data_local_dir().map(|d| d.join("RPWorld Launcher").join("rpw-launcher.exe")),
+        dirs::data_local_dir()
+            .map(|d| d.join("Programs").join("RPWorld Launcher").join("rpw-launcher.exe")),
+    ];
+    for c in candidates.into_iter().flatten() {
+        if c.exists() {
+            return Some(c);
+        }
+    }
+    None
+}
+
 #[tauri::command]
 pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
     let client = reqwest::Client::builder()
@@ -78,7 +113,6 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
 
     let assets = release["assets"].as_array().cloned().unwrap_or_default();
 
-    let mut download_url = String::new();
     let mut installer_url = String::new();
     let mut file_size: u64 = 0;
 
@@ -90,31 +124,22 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
             .to_string();
         let size = asset["size"].as_u64().unwrap_or(0);
 
-        if name == "RPWorld-Launcher-app.exe" {
-            download_url = url.clone();
-            file_size = size;
-        }
+        // Only use the NSIS setup installer (most reliable — full re-install)
         if name.ends_with("_x64-setup.exe") && !name.contains("debug") {
             installer_url = url.clone();
-            if download_url.is_empty() {
-                file_size = size;
-            }
+            file_size = size;
         }
-    }
-
-    if download_url.is_empty() {
-        download_url = installer_url.clone();
     }
 
     let release_notes = release["body"].as_str().unwrap_or("").to_string();
-    let update_available = !download_url.is_empty()
+    let update_available = !installer_url.is_empty()
         && compare_versions(&latest_clean, CURRENT_VERSION) == std::cmp::Ordering::Greater;
 
     Ok(UpdateInfo {
         current_version: CURRENT_VERSION.to_string(),
         latest_version: latest_clean,
         update_available,
-        download_url,
+        download_url: installer_url.clone(),
         installer_url,
         release_notes,
         file_size,
@@ -129,7 +154,6 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
         return Ok("no_update".to_string());
     }
 
-    // Helper closure that emits progress events
     let app_ref = app.clone();
     let emit = move |stage: &str, downloaded: u64, total: u64, speed: u64, msg: &str| {
         let _ = app_ref.emit(
@@ -152,23 +176,15 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     let response = client
-        .get(&info.download_url)
+        .get(&info.installer_url)
         .send()
         .await
         .map_err(|e| format!("Ошибка скачивания: {}", e))?;
 
     let total = response.content_length().unwrap_or(info.file_size);
     let temp_dir = std::env::temp_dir();
-    let is_bare_exe = info.download_url.ends_with("RPWorld-Launcher-app.exe");
+    let download_path = temp_dir.join(format!("rpw-setup-{}.exe", info.latest_version));
 
-    let dl_filename = if is_bare_exe {
-        format!("rpw-app-{}.exe", info.latest_version)
-    } else {
-        format!("rpw-setup-{}.exe", info.latest_version)
-    };
-    let download_path = temp_dir.join(&dl_filename);
-
-    // Stream with progress
     use futures_util::StreamExt;
     let mut stream = response.bytes_stream();
     let mut downloaded: u64 = 0;
@@ -199,68 +215,52 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
     }
     drop(file);
 
-    emit("applying", total, total, 0, "Применение обновления...");
+    emit("applying", total, total, 0, "Установка обновления...");
 
-    if is_bare_exe {
-        // Fast: replace only the binary
-        apply_exe_update(app, &download_path)?;
-    } else {
-        // Fallback: NSIS silent install
-        apply_nsis_update(app, &download_path)?;
-    }
+    apply_nsis_update(app, &download_path)?;
 
     Ok("update_started".to_string())
 }
 
-/// Fast update — replaces only the .exe binary, no reinstall needed
-fn apply_exe_update(app: tauri::AppHandle, new_exe: &PathBuf) -> Result<(), String> {
-    let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-
-    let current_dir = current_exe.parent().ok_or("Cannot get exe directory")?;
-
-    let new_target = current_dir.join("RPWorld Launcher_new.exe");
-    fs::copy(new_exe, &new_target).map_err(|e| e.to_string())?;
-    let _ = fs::remove_file(new_exe);
-
-    let install_path = current_exe.to_string_lossy().to_string();
-    let new_path = new_target.to_string_lossy().to_string();
-
-    let batch_path = std::env::temp_dir().join("rpw_apply_update.bat");
-    let batch = format!(
-        "@echo off\r\ntimeout /t 2 /nobreak >nul\r\nmove /y \"{new}\" \"{current}\"\r\ntimeout /t 1 /nobreak >nul\r\nstart \"\" \"{current}\"\r\ndel \"%~f0\"\r\n",
-        new = new_path,
-        current = install_path,
-    );
-
-    fs::write(&batch_path, batch.as_bytes()).map_err(|e| e.to_string())?;
-
-    Command::new("cmd")
-        .args(["/c", "start", "/min", "", batch_path.to_str().unwrap_or("")])
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    // Exit the current process after a short delay so batch can start
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-        app.exit(0);
-    });
-
-    Ok(())
-}
-
-/// Fallback update via NSIS silent installer
+/// Apply update via NSIS silent installer.
+/// Uses registry to find correct launch path after install.
 fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), String> {
     let installer_str = installer.to_string_lossy().to_string();
-    let install_dir = dirs::data_local_dir()
-        .unwrap_or_default()
-        .join("Programs")
-        .join("RPWorld Launcher")
-        .join("RPWorld Launcher.exe");
-    let launch_path = install_dir.to_string_lossy().to_string();
+
+    // Determine where the launcher will be after NSIS installs.
+    // Tauri NSIS currentUser mode → %LOCALAPPDATA%\RPWorld Launcher\rpw-launcher.exe
+    let launch_path = find_installed_exe()
+        .unwrap_or_else(|| {
+            dirs::data_local_dir()
+                .unwrap_or_default()
+                .join("RPWorld Launcher")
+                .join("rpw-launcher.exe")
+        })
+        .to_string_lossy()
+        .to_string();
 
     let batch_path = std::env::temp_dir().join("rpw_nsis_update.bat");
+
+    // Batch script:
+    //  1. wait 3 s (let the current process fully exit)
+    //  2. run NSIS installer silently
+    //  3. wait 5 s (NSIS can take a moment)
+    //  4. launch the freshly-installed exe
+    //  5. self-delete
     let batch = format!(
-        "@echo off\r\ntimeout /t 2 /nobreak >nul\r\n\"{installer}\" /S\r\ntimeout /t 4 /nobreak >nul\r\nif exist \"{launcher}\" start \"\" \"{launcher}\"\r\ndel \"{installer}\"\r\ndel \"%~f0\"\r\n",
+        "@echo off\r\n\
+         timeout /t 3 /nobreak >nul\r\n\
+         \"{installer}\" /S\r\n\
+         timeout /t 5 /nobreak >nul\r\n\
+         if exist \"{launcher}\" (\r\n\
+           start \"\" \"{launcher}\"\r\n\
+         ) else (\r\n\
+           rem fallback: try Programs subfolder\r\n\
+           set FB=%LOCALAPPDATA%\\Programs\\RPWorld Launcher\\rpw-launcher.exe\r\n\
+           if exist \"%FB%\" start \"\" \"%FB%\"\r\n\
+         )\r\n\
+         del \"{installer}\"\r\n\
+         del \"%~f0\"\r\n",
         installer = installer_str,
         launcher = launch_path,
     );
@@ -272,8 +272,9 @@ fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), S
         .spawn()
         .map_err(|e| e.to_string())?;
 
+    // Give the batch a head-start, then close the app
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         app.exit(0);
     });
 

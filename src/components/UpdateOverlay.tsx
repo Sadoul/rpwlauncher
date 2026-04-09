@@ -116,7 +116,7 @@ export default function UpdateOverlay({ updateInfo }: UpdateOverlayProps) {
             transition={{ duration: 2.2, repeat: Infinity, delay: 0.35 }}
           />
           <img
-            src="/icons/launcher.jpg"
+            src="/icons/launcher.png"
             alt="RPWorld"
             className="update-launcher-icon"
           />

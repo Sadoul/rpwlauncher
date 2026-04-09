@@ -28,7 +28,7 @@ export default function Titlebar({ theme, onThemeToggle }: TitlebarProps) {
       {/* Left: launcher icon only */}
       <div className="titlebar-brand" data-tauri-drag-region>
         <img
-          src="/icons/launcher.jpg"
+          src="/icons/launcher.png"
           alt="RPWorld"
           className="titlebar-icon"
           draggable={false}
