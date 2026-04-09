@@ -70,8 +70,7 @@ export default function SettingsPanel({
     setTimeout(() => setToast(""), 3000);
   };
 
-  // ── Java ─────────────────────────────────────────────────────────────────────
-
+  // Java
   const handleFindJava = async () => {
     setJavaLoading(true);
     setJavaStatus("");
@@ -79,7 +78,7 @@ export default function SettingsPanel({
       const info = await invoke<JavaInfo>("find_java");
       if (info.found) {
         onJavaChange(info.path, info.version);
-        setJavaStatus("✓ Найдено: " + info.version);
+        setJavaStatus("Найдено: " + info.version);
       } else {
         setJavaStatus("Java не найдена");
       }
@@ -96,7 +95,7 @@ export default function SettingsPanel({
     try {
       const info = await invoke<JavaInfo>("download_java");
       onJavaChange(info.path, info.version);
-      setJavaStatus("✓ Java 17 скачана: " + info.version);
+      setJavaStatus("Java 17 скачана: " + info.version);
     } catch (e) {
       setJavaStatus("Ошибка: " + String(e));
     } finally {
@@ -112,15 +111,14 @@ export default function SettingsPanel({
       });
       if (typeof selected === "string") {
         onJavaChange(selected, "Ручной выбор");
-        setJavaStatus("✓ Путь установлен вручную");
+        setJavaStatus("Путь установлен вручную");
       }
     } catch (e) {
       setJavaStatus("Ошибка: " + String(e));
     }
   };
 
-  // ── Avatar ───────────────────────────────────────────────────────────────────
-
+  // Avatar
   const handleAvatarClick = () => fileInputRef.current?.click();
 
   const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,24 +126,21 @@ export default function SettingsPanel({
     if (!file) return;
     setAvatarLoading(true);
     try {
-      // Tauri File object may have a `path` property (via tauri://fs)
       const nativePath = (file as File & { path?: string }).path;
       const url = await invoke<string>("save_avatar", { sourcePath: nativePath || file.name });
       onAvatarChange(url);
-      showToast("Аватарка обновлена!");
+      showToast("Аватарка обновлена");
     } catch {
-      // Fallback: create object URL for local preview
       const objUrl = URL.createObjectURL(file);
       onAvatarChange(objUrl);
-      showToast("Аватарка обновлена (локально)");
+      showToast("Аватарка обновлена");
     } finally {
       setAvatarLoading(false);
       e.target.value = "";
     }
   };
 
-  // ── Launcher update ──────────────────────────────────────────────────────────
-
+  // Launcher update
   const handleCheckUpdate = async () => {
     setUpdateLoading(true);
     setUpdateMsg("");
@@ -179,8 +174,7 @@ export default function SettingsPanel({
     }
   };
 
-  // ── Data folder ──────────────────────────────────────────────────────────────
-
+  // Data folder
   const handleOpenDataFolder = async () => {
     try {
       await invoke("open_data_folder");
@@ -189,8 +183,7 @@ export default function SettingsPanel({
     }
   };
 
-  // ── Delete launcher ──────────────────────────────────────────────────────────
-
+  // Delete launcher
   const handleDeleteLauncher = async () => {
     if (!deleteConfirm) {
       setDeleteConfirm(true);
@@ -204,13 +197,11 @@ export default function SettingsPanel({
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-
   return (
     <div className="settings-panel">
       <h2 style={{ marginBottom: 24, fontWeight: 700, fontSize: 20 }}>Настройки</h2>
 
-      {/* ── Profile ── */}
+      {/* Profile */}
       <Section title="Профиль">
         <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
           <div
@@ -220,13 +211,17 @@ export default function SettingsPanel({
             style={{ cursor: "pointer" }}
           >
             {avatarLoading ? (
-              <div className="avatar-placeholder spin">⟳</div>
+              <div className="avatar-placeholder" style={{ fontSize: 20 }}>...</div>
             ) : avatarUrl ? (
               <img src={avatarUrl} alt="avatar" className="avatar-img" />
             ) : (
               <div className="avatar-placeholder">{username[0]?.toUpperCase()}</div>
             )}
-            <div className="avatar-overlay">✎</div>
+            <div className="avatar-overlay">
+              <svg viewBox="0 0 16 16" fill="none" width="12" height="12">
+                <path d="M11 2L14 5L5 14H2V11L11 2Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+              </svg>
+            </div>
           </div>
           <input
             ref={fileInputRef}
@@ -244,7 +239,7 @@ export default function SettingsPanel({
         </div>
       </Section>
 
-      {/* ── Appearance ── */}
+      {/* Appearance */}
       <Section title="Оформление">
         <div style={{ display: "flex", gap: 10 }}>
           {(["light", "dark"] as Theme[]).map(t => (
@@ -255,13 +250,13 @@ export default function SettingsPanel({
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
             >
-              {t === "light" ? "☀ Светлая" : "🌙 Тёмная"}
+              {t === "light" ? "Светлая" : "Тёмная"}
             </motion.button>
           ))}
         </div>
       </Section>
 
-      {/* ── Memory ── */}
+      {/* Memory */}
       <Section title="Память (RAM)">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <input
@@ -269,9 +264,9 @@ export default function SettingsPanel({
             value={maxMemory}
             onChange={e => onMemoryChange(Number(e.target.value))}
             className="ram-slider"
-            style={{ flex: 1, "--slider-pct": ((maxMemory - 1024) / (16384 - 1024) * 100) + "%" } as any}
+            style={{ flex: 1, "--slider-pct": ((maxMemory - 1024) / (16384 - 1024) * 100) + "%" } as React.CSSProperties & { "--slider-pct": string }}
           />
-          <span style={{ fontWeight: 700, color: "var(--accent-primary)", minWidth: 56, fontSize: 14 }}>
+          <span style={{ fontWeight: 700, color: "var(--accent)", minWidth: 56, fontSize: 14 }}>
             {(maxMemory / 1024).toFixed(1)} ГБ
           </span>
         </div>
@@ -280,27 +275,27 @@ export default function SettingsPanel({
         </div>
       </Section>
 
-      {/* ── Java ── */}
+      {/* Java */}
       <Section title="Java">
-        <div style={{ fontSize: 12, marginBottom: 8, color: "var(--text-secondary)" }}>
+        <div style={{ fontSize: 12, marginBottom: 8, color: "var(--text-2)" }}>
           {javaPath
-            ? <><span style={{ color: "var(--accent-primary)" }}>✓</span> {javaVersion || "Выбран"}<br /><span style={{ opacity: 0.55, fontSize: 10 }}>{javaPath}</span></>
-            : <span style={{ color: "rgba(255,180,80,0.9)" }}>Java не выбрана</span>
+            ? <><span style={{ color: "var(--accent)" }}>OK</span> {javaVersion || "Выбран"}<br /><span style={{ opacity: 0.55, fontSize: 10 }}>{javaPath}</span></>
+            : <span style={{ color: "var(--accent-2)" }}>Java не выбрана</span>
           }
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Btn onClick={handleFindJava} loading={javaLoading}>🔍 Найти</Btn>
-          <Btn onClick={handleDownloadJava} loading={javaLoading}>⬇ Скачать Java 17</Btn>
-          <Btn onClick={handleBrowseJava}>📂 Обзор</Btn>
+          <Btn onClick={handleFindJava} loading={javaLoading}>Найти</Btn>
+          <Btn onClick={handleDownloadJava} loading={javaLoading}>Скачать Java 17</Btn>
+          <Btn onClick={handleBrowseJava}>Обзор</Btn>
         </div>
         {javaStatus && (
-          <div style={{ fontSize: 11, marginTop: 8, color: javaStatus.startsWith("✓") ? "#7fff7f" : "#ffb080" }}>
+          <div style={{ fontSize: 11, marginTop: 8, color: "var(--text-muted)" }}>
             {javaStatus}
           </div>
         )}
       </Section>
 
-      {/* ── JVM Args ── */}
+      {/* JVM Args */}
       <Section title="JVM аргументы">
         <textarea
           className="jvm-args-input"
@@ -314,14 +309,14 @@ export default function SettingsPanel({
         </div>
       </Section>
 
-      {/* ── GPU ── */}
+      {/* GPU */}
       <Section title="GPU / Видеокарта">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {([
-            { id: "auto", label: "Авто", icon: "🔀" },
-            { id: "discrete", label: "Дискретная (NVIDIA/AMD)", icon: "⚡" },
-            { id: "integrated", label: "Встроенная", icon: "🔋" },
-          ] as { id: GpuMode; label: string; icon: string }[]).map(opt => (
+            { id: "auto",       label: "Авто" },
+            { id: "discrete",   label: "Дискретная (NVIDIA/AMD)" },
+            { id: "integrated", label: "Встроенная" },
+          ] as { id: GpuMode; label: string }[]).map(opt => (
             <motion.button
               key={opt.id}
               className={`gpu-btn ${gpuMode === opt.id ? "active" : ""}`}
@@ -329,7 +324,7 @@ export default function SettingsPanel({
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
             >
-              {opt.icon} {opt.label}
+              {opt.label}
             </motion.button>
           ))}
         </div>
@@ -338,28 +333,28 @@ export default function SettingsPanel({
         </div>
       </Section>
 
-      {/* ── Data folder ── */}
+      {/* Data folder */}
       <Section title="Данные лаунчера">
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
           Все данные хранятся в: <code style={{ opacity: 0.8 }}>%APPDATA%\.rpworld</code>
         </div>
-        <Btn onClick={handleOpenDataFolder}>📁 Открыть папку данных</Btn>
+        <Btn onClick={handleOpenDataFolder}>Открыть папку данных</Btn>
       </Section>
 
-      {/* ── Launcher update ── */}
+      {/* Launcher update */}
       <Section title="Обновление лаунчера">
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <Btn onClick={handleCheckUpdate} loading={updateLoading}>
-            🔄 Проверить обновления
+            Проверить обновления
           </Btn>
           {updateInfo?.update_available && (
             <Btn onClick={handleDoUpdate} loading={updateLoading} accent>
-              ⬆ Обновить до v{updateInfo.latest_version}
+              Обновить до v{updateInfo.latest_version}
             </Btn>
           )}
         </div>
         {updateMsg && (
-          <div style={{ fontSize: 12, marginTop: 8, color: "var(--text-secondary)" }}>
+          <div style={{ fontSize: 12, marginTop: 8, color: "var(--text-2)" }}>
             {updateMsg}
           </div>
         )}
@@ -370,8 +365,8 @@ export default function SettingsPanel({
             style={{
               marginTop: 10,
               padding: "10px 12px",
-              background: "rgba(212,121,58,0.12)",
-              border: "1px solid rgba(212,121,58,0.3)",
+              background: "var(--bg-overlay)",
+              border: "1px solid var(--border)",
               borderRadius: 8,
               fontSize: 12,
             }}
@@ -386,8 +381,8 @@ export default function SettingsPanel({
         )}
       </Section>
 
-      {/* ── Danger zone ── */}
-      <Section title="⚠ Удаление лаунчера" danger>
+      {/* Danger zone */}
+      <Section title="Удаление лаунчера" danger>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
           Удалит все данные лаунчера, модпаки и Java из <code>%APPDATA%\.rpworld</code>, затем запустит деинсталляцию.
         </div>
@@ -397,7 +392,7 @@ export default function SettingsPanel({
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.96 }}
         >
-          {deleteConfirm ? "⚠ Нажмите ещё раз для подтверждения" : "🗑 Удалить лаунчер"}
+          {deleteConfirm ? "Нажмите ещё раз для подтверждения" : "Удалить лаунчер"}
         </motion.button>
       </Section>
 
@@ -418,8 +413,6 @@ export default function SettingsPanel({
     </div>
   );
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function Section({
   title,

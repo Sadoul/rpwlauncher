@@ -199,7 +199,13 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
       {/* Locked overlay for minigames */}
       {config.locked && (
         <div className="locked-overlay">
-          <div className="locked-overlay-icon">🚧</div>
+          <div className="locked-overlay-icon">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="40" height="40">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" opacity="0.4"/>
+              <path d="M12 7v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <circle cx="12" cy="15.5" r="1" fill="currentColor"/>
+            </svg>
+          </div>
           <div className="locked-overlay-title">В разработке</div>
           <div className="locked-overlay-sub">Скоро будет доступно</div>
         </div>
@@ -224,6 +230,7 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
       </div>
 
       <div className="game-panel-content">
+        <div className="game-content-card">
         <AnimatePresence mode="wait">
           {launching ? (
             <motion.div
@@ -233,7 +240,7 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.25 }}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, width: "100%" }}
             >
               {progress && (
                 <>
@@ -315,6 +322,7 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
             </motion.div>
           )}
         </AnimatePresence>
+        </div>{/* end game-content-card */}
       </div>
 
       <div className="game-panel-footer">

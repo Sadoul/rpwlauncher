@@ -14,12 +14,12 @@ interface LoaderVersion {
 
 type Loader = "vanilla" | "forge" | "neoforge" | "fabric" | "optifine";
 
-const LOADERS: { id: Loader; label: string; icon: string; color: string }[] = [
-  { id: "vanilla", label: "Vanilla", icon: "🎮", color: "#5C8A3C" },
-  { id: "forge", label: "Forge", icon: "🔥", color: "#CF6C2C" },
-  { id: "neoforge", label: "NeoForge", icon: "⚡", color: "#7B4FCC" },
-  { id: "fabric", label: "Fabric", icon: "🧵", color: "#B8860B" },
-  { id: "optifine", label: "OptiFine", icon: "✨", color: "#2196A8" },
+const LOADERS: { id: Loader; label: string; color: string }[] = [
+  { id: "vanilla",  label: "Vanilla",  color: "#5C8A3C" },
+  { id: "forge",    label: "Forge",    color: "#CF6C2C" },
+  { id: "neoforge", label: "NeoForge", color: "#7B4FCC" },
+  { id: "fabric",   label: "Fabric",   color: "#B8860B" },
+  { id: "optifine", label: "OptiFine", color: "#2196A8" },
 ];
 
 export default function CustomModpackPanel() {
@@ -158,7 +158,7 @@ export default function CustomModpackPanel() {
               whileTap={{ scale: 0.97 }}
               style={loader === l.id ? { borderColor: l.color, boxShadow: `0 0 14px ${l.color}55` } : {}}
             >
-              <div className="loader-icon">{l.icon}</div>
+              <div className="loader-icon" style={{ fontSize: 11, fontWeight: 700, color: l.color }}>{l.label[0]}</div>
               <div>{l.label}</div>
             </motion.div>
           ))}
@@ -290,7 +290,7 @@ export default function CustomModpackPanel() {
                 fontWeight: 600,
               }}
             >
-              ✓ Модпак «{modpackName}» установлен!
+              Модпак «{modpackName}» установлен!
             </motion.div>
           )}
         </AnimatePresence>

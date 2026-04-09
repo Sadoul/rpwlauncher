@@ -7,10 +7,14 @@
 :root {
   --bg-primary:          #FAF6F1;
   --bg-secondary:        #F3EDE5;
-  --bg-glass:            rgba(255,255,255,0.62);
-  --bg-glass-hover:      rgba(255,255,255,0.82);
-  --bg-glass-active:     rgba(255,255,255,0.95);
-  --bg-overlay:          rgba(200,180,160,0.25);
+  /* glass — used by sidebar, titlebar, nav items */
+  --bg-glass:            rgba(248,243,236,0.82);
+  --bg-glass-hover:      rgba(255,250,244,0.92);
+  --bg-glass-active:     rgba(255,255,255,0.98);
+  /* glass-solid — more opaque, used by settings sections and content cards */
+  --bg-glass-solid:      rgba(252,248,242,0.93);
+  --bg-glass-solid-h:    rgba(255,253,249,0.97);
+  --bg-overlay:          rgba(200,180,160,0.18);
 
   --accent:              #C96A22;
   --accent-2:            #E8955A;
@@ -19,8 +23,8 @@
   --accent-green:        #4A9B4D;
   --accent-red:          #C0392B;
 
-  --border:              rgba(44,24,16,0.09);
-  --border-hover:        rgba(44,24,16,0.18);
+  --border:              rgba(44,24,16,0.10);
+  --border-hover:        rgba(44,24,16,0.20);
 
   --text:                #1C0E06;
   --text-2:              #5A3820;
@@ -32,15 +36,17 @@
   --shadow-lg:  0 8px 28px rgba(44,24,16,0.12);
   --shadow-glow:0 4px 18px var(--accent-glow);
 
-  --blur:       16px;
-  --blur-heavy: 30px;
+  --blur:       18px;
+  --blur-heavy: 32px;
   --r:          12px;
   --r-sm:       8px;
   --r-lg:       18px;
 
   --sidebar-w:  220px;
   --titlebar-h: 40px;
-  --ease:       0.22s ease;
+  /* single duration used everywhere — guarantees simultaneous theme transition */
+  --t:          0.3s;
+  --ease:       0.3s ease;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -50,9 +56,11 @@
 [data-theme="dark"] {
   --bg-primary:          #030C16;
   --bg-secondary:        #060F1C;
-  --bg-glass:            rgba(4,14,28,0.82);
-  --bg-glass-hover:      rgba(6,20,38,0.90);
-  --bg-glass-active:     rgba(8,26,48,0.96);
+  --bg-glass:            rgba(5,16,32,0.84);
+  --bg-glass-hover:      rgba(7,22,42,0.92);
+  --bg-glass-active:     rgba(9,28,52,0.97);
+  --bg-glass-solid:      rgba(4,14,28,0.93);
+  --bg-glass-solid-h:    rgba(6,18,36,0.97);
   --bg-overlay:          rgba(0,20,40,0.35);
 
   --accent:              #00E676;
@@ -81,6 +89,27 @@
    ══════════════════════════════════════════════════════════════ */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* ── Global theme transition ─────────────────────────────────────────────────
+   Forces ALL elements to pick up color/bg changes in the same frame so that
+   background and widgets switch simultaneously when theme is toggled.
+   We only transition color/background/border — NOT transform/opacity, to
+   avoid interfering with Framer Motion animations.
+   ──────────────────────────────────────────────────────────────────────── */
+html, body, #root,
+.app-container, .sidebar, .titlebar,
+.nav-item, .sidebar-account, .sidebar-icon-btn,
+.settings-panel, .settings-section,
+.game-panel, .game-content-card,
+.input-group input, .jvm-args-input,
+.auth-container, .notification {
+  transition:
+    background-color var(--t),
+    background     var(--t),
+    border-color   var(--t),
+    color          var(--t),
+    box-shadow     var(--t);
+}
+
 html, body, #root {
   height: 100%; width: 100%; overflow: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -88,7 +117,6 @@ html, body, #root {
   background: transparent;
   -webkit-font-smoothing: antialiased;
   user-select: none;
-  transition: color 0.3s, background 0.3s;
 }
 
 input, textarea, select { user-select: text; }
@@ -111,7 +139,6 @@ button { font-family: inherit; }
   overflow: hidden;
   position: relative;
   border: 1px solid var(--border);
-  transition: background 0.4s, border-color 0.4s;
 }
 
 .main-layout {
@@ -451,18 +478,20 @@ button { font-family: inherit; }
 .settings-panel {
   padding: 20px 22px;
   overflow-y: auto; flex: 1;
-  background: var(--bg-primary);
-  transition: background 0.3s;
+  background: linear-gradient(160deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
 }
 .settings-panel h2 { font-size: 18px; font-weight: 700; margin-bottom: 18px; color: var(--text); }
 
 .settings-section {
   margin-bottom: 14px;
   padding: 14px 16px;
-  background: var(--bg-glass);
+  /* More opaque than sidebar/titlebar — clearly readable, not too transparent */
+  background: var(--bg-glass-solid);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
   border: 1px solid var(--border);
   border-radius: var(--r);
-  transition: all var(--ease);
+  box-shadow: var(--shadow-sm);
 }
 .settings-section.danger {
   border-color: rgba(192,57,43,0.25);
@@ -841,6 +870,26 @@ button { font-family: inherit; }
   flex: 1; display: flex; align-items: center; justify-content: center;
   padding: 16px 32px;
   position: relative; z-index: 1;
+}
+
+/* Glass card wrapping the play/progress area — matches the rest of the UI */
+.game-content-card {
+  background: var(--bg-glass-solid);
+  backdrop-filter: blur(var(--blur-heavy));
+  -webkit-backdrop-filter: blur(var(--blur-heavy));
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 24px 32px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 16px; min-width: 320px;
+}
+/* On bg-image panels, let the card be slightly less opaque so the image shows through */
+.game-panel.has-bg .game-content-card {
+  background: rgba(0,0,0,0.42);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-color: rgba(255,255,255,0.12);
 }
 
 .game-panel-footer {

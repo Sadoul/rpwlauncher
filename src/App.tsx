@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "framer-motion";
 import Titlebar from "./components/Titlebar";
@@ -49,7 +49,9 @@ export default function App() {
   const [notification, setNotification] = useState("");
   const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
 
-  useEffect(() => {
+  // useLayoutEffect runs synchronously before paint — ensures all CSS variables
+  // change in the same frame, so background + widgets transition simultaneously
+  useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("rpw_theme", theme);
   }, [theme]);
@@ -98,7 +100,7 @@ export default function App() {
 
   const handleLogin = (acc: Account) => {
     setAccount(acc);
-    showNotification(`Добро пожаловать, ${acc.username}!`);
+    showNotification(`Добро пожаловать, ${acc.username}`);
   };
 
   const handleLogout = async () => {
