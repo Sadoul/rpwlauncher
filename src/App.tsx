@@ -35,15 +35,6 @@ interface UpdateInfo {
 
 type Theme = "light" | "dark";
 
-const STORAGE_KEYS = {
-  memory: "rpw_memory",
-  javaPath: "rpw_java_path",
-  javaVersion: "rpw_java_version",
-  jvmArgs: "rpw_jvm_args",
-  gpuMode: "rpw_gpu_mode",
-  theme: "rpw_theme",
-} as const;
-
 export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>("rpworld");
@@ -58,105 +49,81 @@ export default function App() {
   const [notification, setNotification] = useState("");
   const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
 
-  // Apply theme to <html>
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem(STORAGE_KEYS.theme, theme);
+    localStorage.setItem("rpw_theme", theme);
   }, [theme]);
 
-  useEffect(() => {
-    initializeApp();
-  }, []);
+  useEffect(() => { initializeApp(); }, []);
 
   const initializeApp = async () => {
     try {
-      // Load saved settings
-      const savedMemory = localStorage.getItem(STORAGE_KEYS.memory);
-      const savedJavaPath = localStorage.getItem(STORAGE_KEYS.javaPath);
-      const savedJavaVersion = localStorage.getItem(STORAGE_KEYS.javaVersion);
-      const savedJvmArgs = localStorage.getItem(STORAGE_KEYS.jvmArgs);
-      const savedGpuMode = localStorage.getItem(STORAGE_KEYS.gpuMode);
-      const savedTheme = localStorage.getItem(STORAGE_KEYS.theme) as Theme | null;
+      const savedMemory = localStorage.getItem("rpw_memory");
+      const savedJavaPath = localStorage.getItem("rpw_java_path");
+      const savedJavaVersion = localStorage.getItem("rpw_java_version");
+      const savedJvmArgs = localStorage.getItem("rpw_jvm_args");
+      const savedGpuMode = localStorage.getItem("rpw_gpu_mode");
+      const savedTheme = localStorage.getItem("rpw_theme") as Theme | null;
 
-      if (savedMemory) {
-        const m = parseInt(savedMemory);
-        if (!isNaN(m)) setMaxMemory(Math.max(1024, Math.min(16384, m)));
-      }
+      if (savedMemory) { const m = parseInt(savedMemory); if (!isNaN(m)) setMaxMemory(Math.max(1024, Math.min(16384, m))); }
       if (savedJavaPath) setJavaPath(savedJavaPath);
       if (savedJavaVersion) setJavaVersion(savedJavaVersion);
       if (savedJvmArgs) setJvmArgs(savedJvmArgs);
       if (savedGpuMode) setGpuMode(savedGpuMode);
       if (savedTheme === "dark" || savedTheme === "light") setTheme(savedTheme);
 
-      // Load saved avatar
-      try {
-        const url = await invoke<string | null>("get_avatar");
-        if (url) setAvatarUrl(url);
-      } catch { /* ignore */ }
+      try { const url = await invoke<string | null>("get_avatar"); if (url) setAvatarUrl(url); } catch { /* ignore */ }
 
-      // Check saved account
       const savedAccount = await invoke<Account | null>("get_saved_account");
       if (savedAccount) setAccount(savedAccount);
 
-      // Auto-find Java if not saved
       if (!savedJavaPath) {
-        try {
-          const javaInfo = await invoke<JavaInfo>("find_java");
-          if (javaInfo.found) handleJavaChange(javaInfo.path, javaInfo.version);
-        } catch { /* ignore */ }
+        try { const j = await invoke<JavaInfo>("find_java"); if (j.found) handleJavaChange(j.path, j.version); } catch { /* ignore */ }
       }
 
-      // Check launcher update
       try {
         const updateInfo = await invoke<UpdateInfo>("check_launcher_update");
         if (updateInfo.update_available) setPendingUpdate(updateInfo);
       } catch { /* ignore */ }
-    } catch (error) {
-      console.error("Failed to initialize app:", error);
+    } catch (e) {
+      console.error("Init failed:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogin = (newAccount: Account) => {
-    setAccount(newAccount);
-    showNotification(`Добро пожаловать, ${newAccount.username}!`);
+  const toggleTheme = () => {
+    setTheme(t => t === "light" ? "dark" : "light");
+  };
+
+  const handleLogin = (acc: Account) => {
+    setAccount(acc);
+    showNotification(`Добро пожаловать, ${acc.username}!`);
   };
 
   const handleLogout = async () => {
-    try {
-      await invoke("logout");
-      setAccount(null);
-      showNotification("Вы вышли из аккаунта");
-    } catch (err) {
-      console.error("Logout failed:", err);
-    }
+    try { await invoke("logout"); setAccount(null); showNotification("Вы вышли из аккаунта"); } catch { /* ignore */ }
   };
 
   const handleJavaChange = (path: string, version: string) => {
-    setJavaPath(path);
-    setJavaVersion(version);
-    localStorage.setItem(STORAGE_KEYS.javaPath, path);
-    localStorage.setItem(STORAGE_KEYS.javaVersion, version);
+    setJavaPath(path); setJavaVersion(version);
+    localStorage.setItem("rpw_java_path", path);
+    localStorage.setItem("rpw_java_version", version);
   };
 
   const handleMemoryChange = (mem: number) => {
     setMaxMemory(mem);
-    localStorage.setItem(STORAGE_KEYS.memory, String(mem));
+    localStorage.setItem("rpw_memory", String(mem));
   };
 
   const handleJvmArgsChange = (args: string) => {
     setJvmArgs(args);
-    localStorage.setItem(STORAGE_KEYS.jvmArgs, args);
+    localStorage.setItem("rpw_jvm_args", args);
   };
 
   const handleGpuModeChange = (mode: string) => {
     setGpuMode(mode);
-    localStorage.setItem(STORAGE_KEYS.gpuMode, mode);
-  };
-
-  const handleAvatarChange = (url: string) => {
-    setAvatarUrl(url);
+    localStorage.setItem("rpw_gpu_mode", mode);
   };
 
   const showNotification = (msg: string) => {
@@ -174,25 +141,13 @@ export default function App() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
         >
-          <motion.div
-            style={{
-              width: 68,
-              height: 68,
-              borderRadius: "16px",
-              background: "linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 20,
-              fontWeight: 800,
-              color: "var(--text-on-accent)",
-              letterSpacing: 2,
-            }}
+          <motion.img
+            src="/icons/launcher.jpg"
+            alt="RPWorld"
+            style={{ width: 72, height: 72, borderRadius: "18px", objectFit: "cover" }}
             animate={{ boxShadow: ["0 0 20px rgba(212,121,58,0.3)", "0 0 50px rgba(212,121,58,0.6)", "0 0 20px rgba(212,121,58,0.3)"] }}
             transition={{ duration: 2, repeat: Infinity }}
-          >
-            RPW
-          </motion.div>
+          />
           <div style={{ color: "var(--text-muted)", fontSize: 13 }}>Загрузка...</div>
         </motion.div>
       </div>
@@ -203,7 +158,6 @@ export default function App() {
     <div className="app-container">
       <ParticlesBg />
 
-      {/* Update overlay */}
       <AnimatePresence>
         {pendingUpdate && (
           <UpdateOverlay
@@ -213,7 +167,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <Titlebar />
+      <Titlebar theme={theme} onThemeToggle={toggleTheme} />
 
       <div className="main-layout" style={{ position: "relative", zIndex: 1 }}>
         <Sidebar
@@ -259,7 +213,7 @@ export default function App() {
                     onJvmArgsChange={handleJvmArgsChange}
                     onGpuModeChange={handleGpuModeChange}
                     onThemeChange={setTheme}
-                    onAvatarChange={handleAvatarChange}
+                    onAvatarChange={setAvatarUrl}
                   />
                 </motion.div>
               ) : currentPage === "custom" ? (
@@ -280,14 +234,13 @@ export default function App() {
         </div>
       </div>
 
-      {/* Toast notification */}
       <AnimatePresence>
         {notification && (
           <motion.div
             className="notification"
-            initial={{ opacity: 0, y: 16, x: 16 }}
-            animate={{ opacity: 1, y: 0, x: 0 }}
-            exit={{ opacity: 0, y: 16, x: 16 }}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.25 }}
           >
             {notification}
