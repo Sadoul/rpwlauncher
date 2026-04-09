@@ -84,8 +84,12 @@ export default function App() {
       }
 
       try {
-        const updateInfo = await invoke<UpdateInfo>("check_launcher_update");
-        if (updateInfo.update_available) setPendingUpdate(updateInfo);
+        // Skip update check if we just ran an NSIS update (breaks the infinite-loop bug)
+        const justUpdated = await invoke<boolean>("check_just_updated").catch(() => false);
+        if (!justUpdated) {
+          const updateInfo = await invoke<UpdateInfo>("check_launcher_update");
+          if (updateInfo.update_available) setPendingUpdate(updateInfo);
+        }
       } catch { /* ignore */ }
     } catch (e) {
       console.error("Init failed:", e);

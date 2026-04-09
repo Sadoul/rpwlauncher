@@ -32,6 +32,7 @@ pub fn run() {
             // Updater
             updater::check_launcher_update,
             updater::update_launcher,
+            updater::check_just_updated,
             // Java
             java::find_java,
             java::download_java,

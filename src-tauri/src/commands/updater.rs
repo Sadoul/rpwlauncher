@@ -28,6 +28,36 @@ pub struct UpdateProgress {
 const GITHUB_REPO: &str = "Sadoul/rpwlauncher";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+fn data_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".rpworld")
+}
+
+/// Path to the "just updated" marker file.
+/// Written before we exit, read on the next startup.
+fn marker_path() -> PathBuf {
+    data_dir().join("update_marker")
+}
+
+/// Called by frontend on startup: returns true if we just ran an update.
+/// Deletes the marker so it only fires once.
+#[tauri::command]
+pub fn check_just_updated() -> bool {
+    let path = marker_path();
+    if path.exists() {
+        let _ = fs::remove_file(&path);
+        return true;
+    }
+    false
+}
+
+fn write_update_marker() {
+    let dir = data_dir();
+    let _ = fs::create_dir_all(&dir);
+    let _ = fs::write(marker_path(), CURRENT_VERSION);
+}
+
 fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
     let parse = |v: &str| {
         v.trim_start_matches('v')
@@ -38,7 +68,7 @@ fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
     parse(a).cmp(&parse(b))
 }
 
-/// Find the installed launcher exe using registry (same logic as stub)
+/// Find the installed launcher exe using registry (same logic as stub).
 fn find_installed_exe() -> Option<PathBuf> {
     #[cfg(windows)]
     {
@@ -58,8 +88,7 @@ fn find_installed_exe() -> Option<PathBuf> {
             }
         }
     }
-
-    // Fallback: default Tauri NSIS path — %LOCALAPPDATA%\RPWorld Launcher\rpw-launcher.exe
+    // Fallback
     let candidates = [
         dirs::data_local_dir().map(|d| d.join("RPWorld Launcher").join("rpw-launcher.exe")),
         dirs::data_local_dir()
@@ -112,7 +141,6 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
     let latest_clean = tag.trim_start_matches('v').to_string();
 
     let assets = release["assets"].as_array().cloned().unwrap_or_default();
-
     let mut installer_url = String::new();
     let mut file_size: u64 = 0;
 
@@ -124,9 +152,8 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
             .to_string();
         let size = asset["size"].as_u64().unwrap_or(0);
 
-        // Only use the NSIS setup installer (most reliable — full re-install)
         if name.ends_with("_x64-setup.exe") && !name.contains("debug") {
-            installer_url = url.clone();
+            installer_url = url;
             file_size = size;
         }
     }
@@ -217,52 +244,56 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
 
     emit("applying", total, total, 0, "Установка обновления...");
 
+    // Write marker BEFORE we exit — on next startup the update check is skipped
+    write_update_marker();
+
     apply_nsis_update(app, &download_path)?;
 
     Ok("update_started".to_string())
 }
 
-/// Apply update via NSIS silent installer.
-/// Uses registry to find correct launch path after install.
 fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), String> {
     let installer_str = installer.to_string_lossy().to_string();
 
-    // Determine where the launcher will be after NSIS installs.
-    // Tauri NSIS currentUser mode → %LOCALAPPDATA%\RPWorld Launcher\rpw-launcher.exe
-    let launch_path = find_installed_exe()
+    // Known install dir — used as a fallback if registry read fails post-install
+    // Tauri NSIS currentUser: %LOCALAPPDATA%\RPWorld Launcher\rpw-launcher.exe
+    let install_dir = find_installed_exe()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .unwrap_or_else(|| {
             dirs::data_local_dir()
                 .unwrap_or_default()
                 .join("RPWorld Launcher")
-                .join("rpw-launcher.exe")
-        })
-        .to_string_lossy()
-        .to_string();
+        });
+    let launch_exe = install_dir.join("rpw-launcher.exe");
+    let launch_str = launch_exe.to_string_lossy().to_string();
 
     let batch_path = std::env::temp_dir().join("rpw_nsis_update.bat");
 
-    // Batch script:
-    //  1. wait 3 s (let the current process fully exit)
-    //  2. run NSIS installer silently
-    //  3. wait 5 s (NSIS can take a moment)
-    //  4. launch the freshly-installed exe
-    //  5. self-delete
+    // Batch script steps:
+    //  1. Force-kill any remaining rpw-launcher.exe processes (WebView2 may still hold the lock)
+    //  2. Wait 2 s for OS to release file locks
+    //  3. Run NSIS installer silently
+    //  4. Wait 8 s (NSIS can take a while; give it plenty of time)
+    //  5. Launch the freshly installed exe from the known path
+    //  6. Self-delete
     let batch = format!(
         "@echo off\r\n\
-         timeout /t 3 /nobreak >nul\r\n\
+         taskkill /IM rpw-launcher.exe /F >nul 2>&1\r\n\
+         taskkill /IM WebView2Manager.exe /F >nul 2>&1\r\n\
+         timeout /t 2 /nobreak >nul\r\n\
          \"{installer}\" /S\r\n\
-         timeout /t 5 /nobreak >nul\r\n\
+         timeout /t 8 /nobreak >nul\r\n\
          if exist \"{launcher}\" (\r\n\
            start \"\" \"{launcher}\"\r\n\
          ) else (\r\n\
-           rem fallback: try Programs subfolder\r\n\
-           set FB=%LOCALAPPDATA%\\Programs\\RPWorld Launcher\\rpw-launcher.exe\r\n\
-           if exist \"%FB%\" start \"\" \"%FB%\"\r\n\
+           for /f \"usebackq tokens=2,*\" %%A in (`reg query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RPWorld Launcher\" /v InstallLocation 2^>nul`) do (\r\n\
+             start \"\" \"%%B\\rpw-launcher.exe\"\r\n\
+           )\r\n\
          )\r\n\
          del \"{installer}\"\r\n\
-         del \"%~f0\"\r\n",
+         (goto) 2>nul & del \"%~f0\"\r\n",
         installer = installer_str,
-        launcher = launch_path,
+        launcher = launch_str,
     );
 
     fs::write(&batch_path, batch.as_bytes()).map_err(|e| e.to_string())?;
@@ -272,9 +303,8 @@ fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), S
         .spawn()
         .map_err(|e| e.to_string())?;
 
-    // Give the batch a head-start, then close the app
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
         app.exit(0);
     });
 
