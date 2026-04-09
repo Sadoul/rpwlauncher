@@ -39,8 +39,8 @@ jobs:
       - name: Install npm deps
         run: npm ci
 
-      - name: Generate icons from launcher.jpg
-        run: npx @tauri-apps/cli icon images/icons/launcher.jpg
+      - name: Generate icons from launcher.png
+        run: npx @tauri-apps/cli icon images/icons/launcher.png
 
       - name: Build Tauri app (NSIS)
         run: npm run tauri build -- --bundles nsis
