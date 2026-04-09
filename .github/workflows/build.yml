@@ -5,10 +5,6 @@ on:
     tags:
       - 'v*'
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Two parallel jobs: main app + stub → merge into release
-# ─────────────────────────────────────────────────────────────────────────────
-
 jobs:
   # ── 1. Main Tauri app ───────────────────────────────────────────────────────
   build-main:
@@ -20,42 +16,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Node
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      # Rust
       - uses: dtolnay/rust-toolchain@stable
 
-      # sccache — компилятор-кэш, экономит 3-5 мин на повторных билдах
-      - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.5
-
-      - name: Configure sccache
-        run: |
-          echo "SCCACHE_GHA_ENABLED=true" >> $env:GITHUB_ENV
-          echo "RUSTC_WRAPPER=sccache" >> $env:GITHUB_ENV
-
-      # Rust dependency cache (vendor-level)
+      # Rust dependency cache — caches compiled crates between runs
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
           cache-on-failure: true
+          shared-key: main-app
 
-      # Frontend deps
       - name: Install npm deps
         run: npm ci
 
-      # Build Tauri (NSIS)
-      - name: Build Tauri app
+      - name: Build Tauri app (NSIS)
         run: npm run tauri build -- --bundles nsis
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      # Upload NSIS installer as artifact
       - name: Upload main installer artifact
         uses: actions/upload-artifact@v4
         with:
@@ -77,24 +60,17 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.5
-
-      - name: Configure sccache
-        run: |
-          echo "SCCACHE_GHA_ENABLED=true" >> $env:GITHUB_ENV
-          echo "RUSTC_WRAPPER=sccache" >> $env:GITHUB_ENV
-
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: stub/src-tauri -> target
           cache-on-failure: true
+          shared-key: stub-app
 
       - name: Install stub npm deps
         working-directory: stub
         run: npm ci
 
-      - name: Build stub
+      - name: Build stub (NSIS)
         working-directory: stub
         run: npm run tauri build -- --bundles nsis
         env:
@@ -131,10 +107,7 @@ jobs:
           name: stub-installer
           path: dist/stub
 
-      - name: List artifacts
-        run: ls -R dist/
-
-      - name: Rename stub exe
+      - name: Rename stub to RPWorld-Launcher.exe
         run: |
           STUB=$(ls dist/stub/*.exe | head -1)
           cp "$STUB" dist/RPWorld-Launcher.exe
