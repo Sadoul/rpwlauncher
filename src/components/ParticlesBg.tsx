@@ -29,7 +29,7 @@ export default function ParticlesBg() {
             },
           },
           color: {
-            value: ["#7c3aed", "#a855f7", "#3b82f6", "#06b6d4"],
+            value: ["#D4793A", "#E8A87C", "#C4A882", "#B8612A"],
           },
           shape: {
             type: "circle",
@@ -53,8 +53,8 @@ export default function ParticlesBg() {
           links: {
             enable: true,
             distance: 150,
-            color: "#7c3aed",
-            opacity: 0.12,
+            color: "#D4793A",
+            opacity: 0.08,
             width: 1,
           },
           move: {
