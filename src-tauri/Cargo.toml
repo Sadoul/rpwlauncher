@@ -1,6 +1,6 @@
 [package]
 name = "rpw-launcher"
-version = "1.0.7"
+version = "2.0.0"
 description = "RPWorld Minecraft Launcher"
 authors = ["Sadoul"]
 edition = "2021"
@@ -13,7 +13,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-http = "2"
@@ -30,3 +30,14 @@ hex = "0.4"
 dirs = "5"
 uuid = { version = "1", features = ["v4"] }
 open = "5"
+chrono = { version = "0.4", features = ["serde"] }
+urlencoding = "2"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "symbols"
+

@@ -1,6 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { motion } from "framer-motion";
+import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
+import { motion, AnimatePresence } from "framer-motion";
+
+type Theme = "light" | "dark";
+type GpuMode = "auto" | "discrete" | "integrated";
+
+interface Props {
+  javaPath: string;
+  javaVersion: string;
+  maxMemory: number;
+  jvmArgs: string;
+  gpuMode: string;
+  theme: Theme;
+  avatarUrl: string | null;
+  username: string;
+  onJavaChange: (path: string, version: string) => void;
+  onMemoryChange: (mem: number) => void;
+  onJvmArgsChange: (args: string) => void;
+  onGpuModeChange: (mode: string) => void;
+  onThemeChange: (theme: Theme) => void;
+  onAvatarChange: (url: string) => void;
+}
 
 interface JavaInfo {
   path: string;
@@ -13,299 +34,435 @@ interface UpdateInfo {
   latest_version: string;
   update_available: boolean;
   download_url: string;
+  installer_url: string;
   release_notes: string;
-}
-
-interface SettingsPanelProps {
-  javaPath: string;
-  javaVersion: string;
-  maxMemory: number;
-  onJavaChange: (path: string, version: string) => void;
-  onMemoryChange: (memory: number) => void;
+  file_size: number;
 }
 
 export default function SettingsPanel({
   javaPath,
   javaVersion,
   maxMemory,
+  jvmArgs,
+  gpuMode,
+  theme,
+  avatarUrl,
+  username,
   onJavaChange,
   onMemoryChange,
-}: SettingsPanelProps) {
-  const [downloadingJava, setDownloadingJava] = useState(false);
-  const [searchingJava, setSearchingJava] = useState(false);
+  onJvmArgsChange,
+  onGpuModeChange,
+  onThemeChange,
+  onAvatarChange,
+}: Props) {
+  const [javaStatus, setJavaStatus] = useState("");
+  const [javaLoading, setJavaLoading] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updating, setUpdating] = useState(false);
+  const [updateLoading, setUpdateLoading] = useState(false);
   const [updateMsg, setUpdateMsg] = useState("");
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [toast, setToast] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    checkUpdate();
-  }, []);
-
-  const checkUpdate = async () => {
-    setCheckingUpdate(true);
-    try {
-      const info = await invoke<UpdateInfo>("check_launcher_update");
-      setUpdateInfo(info);
-    } catch {
-      // ignore
-    } finally {
-      setCheckingUpdate(false);
-    }
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 3000);
   };
 
-  const handleUpdate = async () => {
-    setUpdating(true);
-    setUpdateMsg("");
-    try {
-      const result = await invoke<string>("update_launcher");
-      if (result === "update_started") {
-        setUpdateMsg("Установщик запущен! Лаунчер закроется для обновления.");
-      } else {
-        setUpdateMsg(result);
-      }
-    } catch (err) {
-      setUpdateMsg(`Ошибка: ${String(err)}`);
-    } finally {
-      setUpdating(false);
-    }
-  };
+  // ── Java ─────────────────────────────────────────────────────────────────────
 
   const handleFindJava = async () => {
-    setSearchingJava(true);
+    setJavaLoading(true);
+    setJavaStatus("");
     try {
       const info = await invoke<JavaInfo>("find_java");
       if (info.found) {
         onJavaChange(info.path, info.version);
+        setJavaStatus("✓ Найдено: " + info.version);
+      } else {
+        setJavaStatus("Java не найдена");
       }
-    } catch (err) {
-      console.error("Failed to find Java:", err);
+    } catch (e) {
+      setJavaStatus("Ошибка: " + String(e));
     } finally {
-      setSearchingJava(false);
+      setJavaLoading(false);
     }
   };
 
   const handleDownloadJava = async () => {
-    setDownloadingJava(true);
+    setJavaLoading(true);
+    setJavaStatus("Скачивание Java 17...");
     try {
       const info = await invoke<JavaInfo>("download_java");
-      if (info.found) {
-        onJavaChange(info.path, info.version);
-      }
-    } catch (err) {
-      console.error("Failed to download Java:", err);
+      onJavaChange(info.path, info.version);
+      setJavaStatus("✓ Java 17 скачана: " + info.version);
+    } catch (e) {
+      setJavaStatus("Ошибка: " + String(e));
     } finally {
-      setDownloadingJava(false);
+      setJavaLoading(false);
     }
   };
 
+  const handleBrowseJava = async () => {
+    try {
+      const selected = await dialogOpen({
+        filters: [{ name: "Java", extensions: ["exe"] }],
+        title: "Выберите java.exe",
+      });
+      if (typeof selected === "string") {
+        onJavaChange(selected, "Ручной выбор");
+        setJavaStatus("✓ Путь установлен вручную");
+      }
+    } catch (e) {
+      setJavaStatus("Ошибка: " + String(e));
+    }
+  };
+
+  // ── Avatar ───────────────────────────────────────────────────────────────────
+
+  const handleAvatarClick = () => fileInputRef.current?.click();
+
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarLoading(true);
+    try {
+      // Tauri File object may have a `path` property (via tauri://fs)
+      const nativePath = (file as File & { path?: string }).path;
+      const url = await invoke<string>("save_avatar", { sourcePath: nativePath || file.name });
+      onAvatarChange(url);
+      showToast("Аватарка обновлена!");
+    } catch {
+      // Fallback: create object URL for local preview
+      const objUrl = URL.createObjectURL(file);
+      onAvatarChange(objUrl);
+      showToast("Аватарка обновлена (локально)");
+    } finally {
+      setAvatarLoading(false);
+      e.target.value = "";
+    }
+  };
+
+  // ── Launcher update ──────────────────────────────────────────────────────────
+
+  const handleCheckUpdate = async () => {
+    setUpdateLoading(true);
+    setUpdateMsg("");
+    setUpdateInfo(null);
+    try {
+      const info = await invoke<UpdateInfo>("check_launcher_update");
+      setUpdateInfo(info);
+      if (!info.update_available) setUpdateMsg(`Актуальная версия v${info.current_version}`);
+    } catch (e) {
+      setUpdateMsg("Ошибка проверки: " + String(e));
+    } finally {
+      setUpdateLoading(false);
+    }
+  };
+
+  const handleDoUpdate = async () => {
+    if (!updateInfo) return;
+    setUpdateLoading(true);
+    setUpdateMsg("Скачивание обновления...");
+    try {
+      await invoke("update_launcher", {
+        downloadUrl: updateInfo.download_url,
+        installerUrl: updateInfo.installer_url,
+        isBareExe: false,
+      });
+      setUpdateMsg("Обновление запущено, лаунчер перезапустится...");
+    } catch (e) {
+      setUpdateMsg("Ошибка: " + String(e));
+    } finally {
+      setUpdateLoading(false);
+    }
+  };
+
+  // ── Data folder ──────────────────────────────────────────────────────────────
+
+  const handleOpenDataFolder = async () => {
+    try {
+      await invoke("open_data_folder");
+    } catch (e) {
+      showToast("Ошибка: " + String(e));
+    }
+  };
+
+  // ── Delete launcher ──────────────────────────────────────────────────────────
+
+  const handleDeleteLauncher = async () => {
+    if (!deleteConfirm) {
+      setDeleteConfirm(true);
+      setTimeout(() => setDeleteConfirm(false), 4000);
+      return;
+    }
+    try {
+      await invoke("delete_launcher");
+    } catch (e) {
+      showToast("Ошибка: " + String(e));
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
   return (
-    <motion.div
-      className="settings-panel"
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-    >
-      <h2>Настройки</h2>
+    <div className="settings-panel">
+      <h2 style={{ marginBottom: 24, fontWeight: 700, fontSize: 20 }}>Настройки</h2>
 
-      {/* Auto-update Section */}
-      <div className="settings-section">
-        <h3>Обновления лаунчера</h3>
-
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Текущая версия</div>
-            <div className="setting-value" style={{ marginTop: 4, fontSize: "12px" }}>
-              {updateInfo ? `v${updateInfo.current_version}` : "—"}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {updateInfo?.update_available && (
-              <span className="status-badge update">
-                <span className="status-dot" />
-                v{updateInfo.latest_version}
-              </span>
-            )}
-            {updateInfo && !updateInfo.update_available && !checkingUpdate && (
-              <span className="status-badge ready">
-                <span className="status-dot" />
-                Актуально
-              </span>
-            )}
-          </div>
-        </div>
-
-        {updateInfo?.update_available && (
-          <div className="setting-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 12 }}>
-            <div className="setting-label">
-              Доступно обновление до v{updateInfo.latest_version}
-            </div>
-            {updateMsg && (
-              <div style={{ fontSize: "12px", color: "var(--accent-green)", padding: "8px 12px", background: "rgba(16,185,129,0.1)", borderRadius: 6, border: "1px solid rgba(16,185,129,0.2)", width: "100%" }}>
-                {updateMsg}
-              </div>
-            )}
-            <motion.button
-              className="auth-button"
-              style={{ padding: "10px 24px", marginTop: 0, background: "linear-gradient(135deg, #f59e0b, #d97706)" }}
-              onClick={handleUpdate}
-              disabled={updating}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {updating ? (
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-                  Скачивание обновления...
-                </span>
-              ) : (
-                "Обновить лаунчер"
-              )}
-            </motion.button>
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <motion.button
-            className="auth-button"
-            style={{ padding: "8px 16px", fontSize: "12px", marginTop: 0, background: "rgba(0,0,0,0.3)", border: "1px solid var(--glass-border)" }}
-            onClick={checkUpdate}
-            disabled={checkingUpdate}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+      {/* ── Profile ── */}
+      <Section title="Профиль">
+        <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
+          <div
+            className="avatar-wrapper"
+            onClick={handleAvatarClick}
+            title="Нажмите чтобы сменить аватарку"
+            style={{ cursor: "pointer" }}
           >
-            {checkingUpdate ? "Проверка..." : "Проверить обновления"}
-          </motion.button>
-        </div>
-      </div>
-
-      {/* Java Section */}
-      <div className="settings-section">
-        <h3>Java</h3>
-
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Путь к Java</div>
-            <div className="setting-value" style={{ marginTop: 4, fontSize: "12px", maxWidth: 350, wordBreak: "break-all" }}>
-              {javaPath || "Не найдена"}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <motion.button
-              className="auth-button"
-              style={{ padding: "8px 16px", fontSize: "12px", marginTop: 0 }}
-              onClick={handleFindJava}
-              disabled={searchingJava}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {searchingJava ? "Поиск..." : "Найти"}
-            </motion.button>
-            <motion.button
-              className="auth-button"
-              style={{ padding: "8px 16px", fontSize: "12px", marginTop: 0, background: "linear-gradient(135deg, #10b981, #059669)" }}
-              onClick={handleDownloadJava}
-              disabled={downloadingJava}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {downloadingJava ? (
-                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div className="spinner" style={{ width: 12, height: 12, borderWidth: 2 }} />
-                  Скачивание...
-                </span>
-              ) : (
-                "Скачать Java 17"
-              )}
-            </motion.button>
-          </div>
-        </div>
-
-        {javaVersion && (
-          <div className="setting-row">
-            <div className="setting-label">Версия Java</div>
-            <div className="setting-value">{javaVersion}</div>
-          </div>
-        )}
-      </div>
-
-      {/* Memory Section */}
-      <div className="settings-section">
-        <h3>Память</h3>
-
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Максимальная память (МБ)</div>
-            <div className="setting-value" style={{ marginTop: 4, fontSize: "12px" }}>
-              Рекомендуется 4096–8192 МБ ��ля модов
-            </div>
+            {avatarLoading ? (
+              <div className="avatar-placeholder spin">⟳</div>
+            ) : avatarUrl ? (
+              <img src={avatarUrl} alt="avatar" className="avatar-img" />
+            ) : (
+              <div className="avatar-placeholder">{username[0]?.toUpperCase()}</div>
+            )}
+            <div className="avatar-overlay">✎</div>
           </div>
           <input
-            className="setting-input"
-            type="number"
-            value={maxMemory}
-            onChange={(e) => {
-              const val = parseInt(e.target.value) || 2048;
-              onMemoryChange(Math.max(1024, Math.min(32768, val)));
-            }}
-            min={1024}
-            max={32768}
-            step={512}
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            style={{ display: "none" }}
+            onChange={handleAvatarFile}
           />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>{username}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+              Нажмите на аватарку чтобы сменить (png, jpg, gif, webp)
+            </div>
+          </div>
         </div>
+      </Section>
 
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          {[2048, 4096, 6144, 8192].map((mem) => (
+      {/* ── Appearance ── */}
+      <Section title="Оформление">
+        <div style={{ display: "flex", gap: 10 }}>
+          {(["light", "dark"] as Theme[]).map(t => (
             <motion.button
-              key={mem}
-              onClick={() => onMemoryChange(mem)}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              style={{
-                padding: "6px 14px",
-                fontSize: "12px",
-                fontFamily: "'Inter', sans-serif",
-                fontWeight: 500,
-                color: maxMemory === mem ? "white" : "var(--text-secondary)",
-                background:
-                  maxMemory === mem
-                    ? "linear-gradient(135deg, var(--accent-primary), var(--accent-blue))"
-                    : "rgba(0,0,0,0.2)",
-                border: `1px solid ${maxMemory === mem ? "transparent" : "var(--glass-border)"}`,
-                borderRadius: "6px",
-                cursor: "pointer",
-                transition: "all 0.2s",
-              }}
+              key={t}
+              className={`theme-btn ${theme === t ? "active" : ""}`}
+              onClick={() => onThemeChange(t)}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
             >
-              {mem / 1024} ГБ
+              {t === "light" ? "☀ Светлая" : "🌙 Тёмная"}
             </motion.button>
           ))}
         </div>
-      </div>
+      </Section>
 
-      {/* Launcher Info */}
-      <div className="settings-section">
-        <h3>О лаунчере</h3>
-
-        <div className="setting-row">
-          <div className="setting-label">Данные лаунчера</div>
-          <div className="setting-value">%APPDATA%\.rpworld</div>
+      {/* ── Memory ── */}
+      <Section title="Память (RAM)">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <input
+            type="range" min={1024} max={16384} step={512}
+            value={maxMemory}
+            onChange={e => onMemoryChange(Number(e.target.value))}
+            className="ram-slider"
+            style={{ flex: 1, "--slider-pct": ((maxMemory - 1024) / (16384 - 1024) * 100) + "%" } as any}
+          />
+          <span style={{ fontWeight: 700, color: "var(--accent-primary)", minWidth: 56, fontSize: 14 }}>
+            {(maxMemory / 1024).toFixed(1)} ГБ
+          </span>
         </div>
-        <div className="setting-row">
-          <div className="setting-label">GitHub</div>
-          <div
-            className="setting-value"
-            style={{ color: "var(--accent-cyan)", cursor: "pointer" }}
-            onClick={() => {
-              import("@tauri-apps/plugin-shell").then((shell) =>
-                shell.open("https://github.com/Sadoul/rpwlauncher")
-              );
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>
+          Рекомендуется: 4–8 ГБ для модпаков, 2 ГБ для ванилы
+        </div>
+      </Section>
+
+      {/* ── Java ── */}
+      <Section title="Java">
+        <div style={{ fontSize: 12, marginBottom: 8, color: "var(--text-secondary)" }}>
+          {javaPath
+            ? <><span style={{ color: "var(--accent-primary)" }}>✓</span> {javaVersion || "Выбран"}<br /><span style={{ opacity: 0.55, fontSize: 10 }}>{javaPath}</span></>
+            : <span style={{ color: "rgba(255,180,80,0.9)" }}>Java не выбрана</span>
+          }
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn onClick={handleFindJava} loading={javaLoading}>🔍 Найти</Btn>
+          <Btn onClick={handleDownloadJava} loading={javaLoading}>⬇ Скачать Java 17</Btn>
+          <Btn onClick={handleBrowseJava}>📂 Обзор</Btn>
+        </div>
+        {javaStatus && (
+          <div style={{ fontSize: 11, marginTop: 8, color: javaStatus.startsWith("✓") ? "#7fff7f" : "#ffb080" }}>
+            {javaStatus}
+          </div>
+        )}
+      </Section>
+
+      {/* ── JVM Args ── */}
+      <Section title="JVM аргументы">
+        <textarea
+          className="jvm-args-input"
+          placeholder="-XX:+UseG1GC -XX:MaxGCPauseMillis=50 ..."
+          value={jvmArgs}
+          onChange={e => onJvmArgsChange(e.target.value)}
+          rows={3}
+        />
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>
+          Оставьте пустым для значений по умолчанию (G1GC, рекомендуется)
+        </div>
+      </Section>
+
+      {/* ── GPU ── */}
+      <Section title="GPU / Видеокарта">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {([
+            { id: "auto", label: "Авто", icon: "🔀" },
+            { id: "discrete", label: "Дискретная (NVIDIA/AMD)", icon: "⚡" },
+            { id: "integrated", label: "Встроенная", icon: "🔋" },
+          ] as { id: GpuMode; label: string; icon: string }[]).map(opt => (
+            <motion.button
+              key={opt.id}
+              className={`gpu-btn ${gpuMode === opt.id ? "active" : ""}`}
+              onClick={() => onGpuModeChange(opt.id)}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+            >
+              {opt.icon} {opt.label}
+            </motion.button>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+          «Дискретная» передаёт NVIDIA Optimus / AMD MXM аргументы для использования игровой карты
+        </div>
+      </Section>
+
+      {/* ── Data folder ── */}
+      <Section title="Данные лаунчера">
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+          Все данные хранятся в: <code style={{ opacity: 0.8 }}>%APPDATA%\.rpworld</code>
+        </div>
+        <Btn onClick={handleOpenDataFolder}>📁 Открыть папку данных</Btn>
+      </Section>
+
+      {/* ── Launcher update ── */}
+      <Section title="Обновление лаунчера">
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Btn onClick={handleCheckUpdate} loading={updateLoading}>
+            🔄 Проверить обновления
+          </Btn>
+          {updateInfo?.update_available && (
+            <Btn onClick={handleDoUpdate} loading={updateLoading} accent>
+              ⬆ Обновить до v{updateInfo.latest_version}
+            </Btn>
+          )}
+        </div>
+        {updateMsg && (
+          <div style={{ fontSize: 12, marginTop: 8, color: "var(--text-secondary)" }}>
+            {updateMsg}
+          </div>
+        )}
+        {updateInfo?.update_available && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            style={{
+              marginTop: 10,
+              padding: "10px 12px",
+              background: "rgba(212,121,58,0.12)",
+              border: "1px solid rgba(212,121,58,0.3)",
+              borderRadius: 8,
+              fontSize: 12,
             }}
           >
-            Sadoul/rpwlauncher ↗
-          </div>
+            <strong>v{updateInfo.latest_version}</strong> — {(updateInfo.file_size / 1024 / 1024).toFixed(1)} МБ
+            {updateInfo.release_notes && (
+              <div style={{ marginTop: 6, opacity: 0.75, whiteSpace: "pre-line" }}>
+                {updateInfo.release_notes.slice(0, 300)}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </Section>
+
+      {/* ── Danger zone ── */}
+      <Section title="⚠ Удаление лаунчера" danger>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+          Удалит все данные лаунчера, модпаки и Java из <code>%APPDATA%\.rpworld</code>, затем запустит деинсталляцию.
         </div>
-      </div>
+        <motion.button
+          className={`delete-btn ${deleteConfirm ? "confirm" : ""}`}
+          onClick={handleDeleteLauncher}
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.96 }}
+        >
+          {deleteConfirm ? "⚠ Нажмите ещё раз для подтверждения" : "🗑 Удалить лаунчер"}
+        </motion.button>
+      </Section>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            className="notification"
+            style={{ position: "fixed", bottom: 20, right: 20, zIndex: 999 }}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function Section({
+  title,
+  children,
+  danger,
+}: {
+  title: string;
+  children: React.ReactNode;
+  danger?: boolean;
+}) {
+  return (
+    <motion.div
+      className={`settings-section ${danger ? "danger" : ""}`}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+    >
+      <div className="settings-section-title">{title}</div>
+      {children}
     </motion.div>
+  );
+}
+
+function Btn({
+  children,
+  onClick,
+  loading,
+  accent,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  loading?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <motion.button
+      className={`settings-btn ${accent ? "accent" : ""}`}
+      onClick={onClick}
+      disabled={loading}
+      whileHover={{ scale: 1.04 }}
+      whileTap={{ scale: 0.96 }}
+    >
+      {loading ? "..." : children}
+    </motion.button>
   );
 }

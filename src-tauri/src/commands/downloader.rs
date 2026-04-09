@@ -2,9 +2,17 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 static DOWNLOAD_PROGRESS: Mutex<Option<DownloadProgress>> = Mutex::new(None);
+static CANCEL_FLAG: AtomicBool = AtomicBool::new(false);
+
+/// Signal ongoing download to stop.
+#[tauri::command]
+pub fn cancel_download() {
+    CANCEL_FLAG.store(true, Ordering::SeqCst);
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadProgress {

@@ -7,6 +7,7 @@ import ParticlesBg from "./components/ParticlesBg";
 import AuthPanel from "./components/AuthPanel";
 import GamePanel from "./components/GamePanel";
 import SettingsPanel from "./components/SettingsPanel";
+import CustomModpackPanel from "./components/CustomModpackPanel";
 import UpdateOverlay from "./components/UpdateOverlay";
 
 interface Account {
@@ -32,10 +33,15 @@ interface UpdateInfo {
   file_size: number;
 }
 
+type Theme = "light" | "dark";
+
 const STORAGE_KEYS = {
   memory: "rpw_memory",
   javaPath: "rpw_java_path",
   javaVersion: "rpw_java_version",
+  jvmArgs: "rpw_jvm_args",
+  gpuMode: "rpw_gpu_mode",
+  theme: "rpw_theme",
 } as const;
 
 export default function App() {
@@ -45,16 +51,22 @@ export default function App() {
   const [javaPath, setJavaPath] = useState("");
   const [javaVersion, setJavaVersion] = useState("");
   const [maxMemory, setMaxMemory] = useState(4096);
+  const [jvmArgs, setJvmArgs] = useState("");
+  const [gpuMode, setGpuMode] = useState("auto");
+  const [theme, setTheme] = useState<Theme>("light");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [notification, setNotification] = useState("");
   const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
+
+  // Apply theme to <html>
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(STORAGE_KEYS.theme, theme);
+  }, [theme]);
 
   useEffect(() => {
     initializeApp();
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.memory, String(maxMemory));
-  }, [maxMemory]);
 
   const initializeApp = async () => {
     try {
@@ -62,13 +74,25 @@ export default function App() {
       const savedMemory = localStorage.getItem(STORAGE_KEYS.memory);
       const savedJavaPath = localStorage.getItem(STORAGE_KEYS.javaPath);
       const savedJavaVersion = localStorage.getItem(STORAGE_KEYS.javaVersion);
+      const savedJvmArgs = localStorage.getItem(STORAGE_KEYS.jvmArgs);
+      const savedGpuMode = localStorage.getItem(STORAGE_KEYS.gpuMode);
+      const savedTheme = localStorage.getItem(STORAGE_KEYS.theme) as Theme | null;
 
       if (savedMemory) {
-        const memory = parseInt(savedMemory);
-        if (!isNaN(memory)) setMaxMemory(Math.max(1024, Math.min(32768, memory)));
+        const m = parseInt(savedMemory);
+        if (!isNaN(m)) setMaxMemory(Math.max(1024, Math.min(16384, m)));
       }
       if (savedJavaPath) setJavaPath(savedJavaPath);
       if (savedJavaVersion) setJavaVersion(savedJavaVersion);
+      if (savedJvmArgs) setJvmArgs(savedJvmArgs);
+      if (savedGpuMode) setGpuMode(savedGpuMode);
+      if (savedTheme === "dark" || savedTheme === "light") setTheme(savedTheme);
+
+      // Load saved avatar
+      try {
+        const url = await invoke<string | null>("get_avatar");
+        if (url) setAvatarUrl(url);
+      } catch { /* ignore */ }
 
       // Check saved account
       const savedAccount = await invoke<Account | null>("get_saved_account");
@@ -79,20 +103,14 @@ export default function App() {
         try {
           const javaInfo = await invoke<JavaInfo>("find_java");
           if (javaInfo.found) handleJavaChange(javaInfo.path, javaInfo.version);
-        } catch {
-          // ignore
-        }
+        } catch { /* ignore */ }
       }
 
-      // Check launcher updates — show beautiful overlay if available
+      // Check launcher update
       try {
         const updateInfo = await invoke<UpdateInfo>("check_launcher_update");
-        if (updateInfo.update_available) {
-          setPendingUpdate(updateInfo);
-        }
-      } catch {
-        // ignore update errors
-      }
+        if (updateInfo.update_available) setPendingUpdate(updateInfo);
+      } catch { /* ignore */ }
     } catch (error) {
       console.error("Failed to initialize app:", error);
     } finally {
@@ -122,6 +140,25 @@ export default function App() {
     localStorage.setItem(STORAGE_KEYS.javaVersion, version);
   };
 
+  const handleMemoryChange = (mem: number) => {
+    setMaxMemory(mem);
+    localStorage.setItem(STORAGE_KEYS.memory, String(mem));
+  };
+
+  const handleJvmArgsChange = (args: string) => {
+    setJvmArgs(args);
+    localStorage.setItem(STORAGE_KEYS.jvmArgs, args);
+  };
+
+  const handleGpuModeChange = (mode: string) => {
+    setGpuMode(mode);
+    localStorage.setItem(STORAGE_KEYS.gpuMode, mode);
+  };
+
+  const handleAvatarChange = (url: string) => {
+    setAvatarUrl(url);
+  };
+
   const showNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(""), 3500);
@@ -129,53 +166,34 @@ export default function App() {
 
   if (loading) {
     return (
-      <div
-        className="app-container"
-        style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
-      >
+      <div className="app-container" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
         <ParticlesBg />
         <motion.div
-          style={{
-            zIndex: 2,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 20,
-          }}
+          style={{ zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
         >
-          {/* Animated logo */}
           <motion.div
             style={{
-              width: 72,
-              height: 72,
-              borderRadius: "18px",
-              background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
+              width: 68,
+              height: 68,
+              borderRadius: "16px",
+              background: "linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 22,
+              fontSize: 20,
               fontWeight: 800,
-              color: "white",
+              color: "var(--text-on-accent)",
               letterSpacing: 2,
-              boxShadow: "0 0 40px rgba(124,58,237,0.4)",
             }}
-            animate={{
-              boxShadow: [
-                "0 0 20px rgba(124,58,237,0.3)",
-                "0 0 50px rgba(124,58,237,0.6)",
-                "0 0 20px rgba(124,58,237,0.3)",
-              ],
-            }}
+            animate={{ boxShadow: ["0 0 20px rgba(212,121,58,0.3)", "0 0 50px rgba(212,121,58,0.6)", "0 0 20px rgba(212,121,58,0.3)"] }}
             transition={{ duration: 2, repeat: Infinity }}
           >
             RPW
           </motion.div>
-          <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>
-            Загрузка...
-          </div>
+          <div style={{ color: "var(--text-muted)", fontSize: 13 }}>Загрузка...</div>
         </motion.div>
       </div>
     );
@@ -185,7 +203,7 @@ export default function App() {
     <div className="app-container">
       <ParticlesBg />
 
-      {/* Beautiful update overlay — shown on top of everything */}
+      {/* Update overlay */}
       <AnimatePresence>
         {pendingUpdate && (
           <UpdateOverlay
@@ -203,6 +221,7 @@ export default function App() {
           onPageChange={setCurrentPage}
           account={account}
           onLogout={handleLogout}
+          avatarUrl={avatarUrl}
         />
 
         <div className="content-area">
@@ -230,10 +249,21 @@ export default function App() {
                     javaPath={javaPath}
                     javaVersion={javaVersion}
                     maxMemory={maxMemory}
+                    jvmArgs={jvmArgs}
+                    gpuMode={gpuMode}
+                    theme={theme}
+                    avatarUrl={avatarUrl}
+                    username={account.username}
                     onJavaChange={handleJavaChange}
-                    onMemoryChange={setMaxMemory}
+                    onMemoryChange={handleMemoryChange}
+                    onJvmArgsChange={handleJvmArgsChange}
+                    onGpuModeChange={handleGpuModeChange}
+                    onThemeChange={setTheme}
+                    onAvatarChange={handleAvatarChange}
                   />
                 </motion.div>
+              ) : currentPage === "custom" ? (
+                <CustomModpackPanel key="custom" />
               ) : (
                 <GamePanel
                   key={currentPage}
@@ -241,6 +271,8 @@ export default function App() {
                   account={account}
                   javaPath={javaPath}
                   maxMemory={maxMemory}
+                  jvmArgs={jvmArgs}
+                  gpuMode={gpuMode}
                 />
               )}
             </AnimatePresence>

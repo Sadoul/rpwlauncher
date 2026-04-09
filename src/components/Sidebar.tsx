@@ -1,124 +1,149 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { FiGlobe, FiZap, FiSettings, FiLogOut } from "react-icons/fi";
+import { invoke } from "@tauri-apps/api/core";
 
-export type Page = "rpworld" | "minigames" | "settings";
-
-interface Account {
-  username: string;
-  uuid: string;
-  access_token: string;
-  account_type: string;
-}
+export type Page = "rpworld" | "minigames" | "custom" | "settings";
 
 interface SidebarProps {
   currentPage: Page;
   onPageChange: (page: Page) => void;
-  account: Account | null;
+  account: { username: string; account_type: string } | null;
   onLogout: () => void;
+  avatarUrl: string | null;
 }
 
-const navItems: { id: Page; label: string; icon: React.ReactNode; description: string }[] = [
-  {
-    id: "rpworld",
-    label: "RPWorld",
-    icon: <FiGlobe />,
-    description: "Ролевой мир",
-  },
-  {
-    id: "minigames",
-    label: "Мини-игры",
-    icon: <FiZap />,
-    description: "Мини-игры",
-  },
+const NAV_ITEMS: {
+  id: Page;
+  label: string;
+  icon: string;
+  locked?: boolean;
+}[] = [
+  { id: "rpworld", label: "RPWorld", icon: "🌍" },
+  { id: "minigames", label: "Мини-игры", icon: "⚡", locked: true },
+  { id: "custom", label: "Свой модпак", icon: "🔧" },
+  { id: "settings", label: "Настройки", icon: "⚙" },
 ];
 
-export default function Sidebar({ currentPage, onPageChange, account, onLogout }: SidebarProps) {
+export default function Sidebar({
+  currentPage,
+  onPageChange,
+  account,
+  onLogout,
+  avatarUrl,
+}: SidebarProps) {
+  const handleDiscord = async () => {
+    try {
+      await invoke("open_url", { url: "https://discord.gg/rpworld" });
+    } catch {
+      window.open("https://discord.gg/rpworld", "_blank");
+    }
+  };
+
   return (
-    <motion.div
-      className="sidebar"
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-    >
+    <aside className="sidebar">
       {/* Logo */}
       <div className="sidebar-logo">
-        <motion.h1
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
+        <motion.div
+          className="logo-badge"
+          animate={{ boxShadow: ["0 0 12px rgba(212,121,58,0.2)", "0 0 24px rgba(212,121,58,0.45)", "0 0 12px rgba(212,121,58,0.2)"] }}
+          transition={{ duration: 3, repeat: Infinity }}
         >
           RPW
-        </motion.h1>
-        <motion.div
-          className="subtitle"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4, duration: 0.5 }}
-        >
-          Launcher
         </motion.div>
+        <div>
+          <div className="logo-name">RPWorld</div>
+          <div className="logo-subtitle">Launcher</div>
+        </div>
       </div>
 
       {/* Navigation */}
       <nav className="sidebar-nav">
-        <AnimatePresence>
-          {navItems.map((item, index) => (
-            <motion.div
-              key={item.id}
-              className={`nav-item ${currentPage === item.id ? "active" : ""}`}
-              onClick={() => onPageChange(item.id)}
-              initial={{ opacity: 0, x: -15 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 * (index + 1), duration: 0.3 }}
-              whileHover={{ x: 4 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <span className="icon">{item.icon}</span>
-              <div>
-                <div>{item.label}</div>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-
-        <div className="nav-divider" />
-
-        <motion.div
-          className={`nav-item ${currentPage === "settings" ? "active" : ""}`}
-          onClick={() => onPageChange("settings")}
-          initial={{ opacity: 0, x: -15 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.4, duration: 0.3 }}
-          whileHover={{ x: 4 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <span className="icon"><FiSettings /></span>
-          <div>Настройки</div>
-        </motion.div>
+        {NAV_ITEMS.map(item => (
+          <NavItem
+            key={item.id}
+            item={item}
+            active={currentPage === item.id}
+            onClick={() => !item.locked && onPageChange(item.id)}
+          />
+        ))}
       </nav>
 
-      {/* User info */}
+      <div className="sidebar-spacer" />
+
+      {/* Discord */}
+      <motion.button
+        className="discord-btn"
+        onClick={handleDiscord}
+        whileHover={{ scale: 1.04 }}
+        whileTap={{ scale: 0.96 }}
+        title="Наш Discord"
+      >
+        <span style={{ fontSize: 16 }}>💬</span>
+        Discord
+      </motion.button>
+
+      {/* Account */}
       {account && (
-        <motion.div
-          className="sidebar-footer"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 0.3 }}
-        >
-          <div className="user-info" onClick={onLogout} title="Нажмите для выхода">
-            <div className="user-avatar">
-              {account.username.charAt(0).toUpperCase()}
-            </div>
-            <div className="user-details">
-              <div className="user-name">{account.username}</div>
-              <div className="user-type">
-                {account.account_type === "microsoft" ? "Microsoft" : "Офлайн"}
-              </div>
-            </div>
-            <FiLogOut style={{ marginLeft: "auto", opacity: 0.5, flexShrink: 0 }} />
+        <div className="sidebar-account">
+          <div className="account-avatar">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="av" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} />
+            ) : (
+              account.username[0]?.toUpperCase()
+            )}
           </div>
-        </motion.div>
+          <div className="account-info">
+            <div className="account-name">{account.username}</div>
+            <div className="account-type">
+              {account.account_type === "offline" ? "Офлайн" : "Microsoft"}
+            </div>
+          </div>
+          <motion.button
+            className="logout-btn"
+            onClick={onLogout}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            title="Выйти"
+          >
+            ⏏
+          </motion.button>
+        </div>
       )}
-    </motion.div>
+    </aside>
+  );
+}
+
+function NavItem({
+  item,
+  active,
+  onClick,
+}: {
+  item: (typeof NAV_ITEMS)[number];
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      className={`nav-item ${active ? "active" : ""} ${item.locked ? "locked" : ""}`}
+      onClick={onClick}
+      whileHover={item.locked ? {} : { x: 3 }}
+      whileTap={item.locked ? {} : { scale: 0.97 }}
+      layout
+    >
+      <span className="nav-icon">{item.icon}</span>
+      <span className="nav-label">{item.label}</span>
+      {item.locked && <span className="nav-lock">🔒</span>}
+      <AnimatePresence>
+        {active && (
+          <motion.span
+            className="nav-active-bar"
+            layoutId="active-bar"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          />
+        )}
+      </AnimatePresence>
+    </motion.button>
   );
 }

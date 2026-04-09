@@ -6,16 +6,13 @@ on:
       - 'v*'
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Два независимых job'а компилируются ПАРАЛЛЕЛЬНО, потом третий собирает релиз.
-# Первый холодный прогон: ~8-10 мин. Последующие (кэш): ~3-5 мин.
+# Two parallel jobs: main app + stub → merge into release
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
-  # ══════════════════════════════════════════════════════════════
-  # Job 1 — Главное приложение (NSIS установщик)
-  # ══════════════════════════════════════════════════════════════
+  # ── 1. Main Tauri app ───────────────────────────────────────────────────────
   build-main:
-    name: "Build main app (NSIS)"
+    name: Build Main App
     runs-on: windows-latest
     permissions:
       contents: write
@@ -23,160 +20,134 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      # Node
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
+          cache: npm
 
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
+      # Rust
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust cache (main app)
-        uses: Swatinem/rust-cache@v2
+      # sccache — компилятор-кэш, экономит 3-5 мин на повторных билдах
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.5
+
+      - name: Configure sccache
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $env:GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $env:GITHUB_ENV
+
+      # Rust dependency cache (vendor-level)
+      - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri -> target"
-          shared-key: "rpw-main-${{ runner.os }}"
+          workspaces: src-tauri -> target
           cache-on-failure: true
 
-      - name: Install dependencies
+      # Frontend deps
+      - name: Install npm deps
         run: npm ci
 
+      # Build Tauri (NSIS)
       - name: Build Tauri app
-        run: npm run tauri build
+        run: npm run tauri build -- --bundles nsis
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      - name: Find NSIS installer
-        id: nsis
-        shell: pwsh
-        run: |
-          $f = Get-ChildItem -Recurse "src-tauri\target\release\bundle\nsis" `
-               -Filter "*-setup.exe" -ErrorAction SilentlyContinue |
-               Select-Object -First 1
-          if (-not $f) { Write-Error "NSIS not found!"; exit 1 }
-          Copy-Item $f.FullName "nsis-setup.exe" -Force
-          Write-Host "Found: $($f.FullName)"
-
-      - name: Upload NSIS installer
+      # Upload NSIS installer as artifact
+      - name: Upload main installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nsis-installer
-          path: nsis-setup.exe
+          name: main-installer
+          path: src-tauri/target/release/bundle/nsis/*.exe
           retention-days: 1
 
-  # ══════════════════════════════════════════════════════════════
-  # Job 2 — Stub (умный установщик/ярлык)
-  # ══════════════════════════════════════════════════════════════
+  # ── 2. Stub installer ───────────────────────────────────────────────────────
   build-stub:
-    name: "Build stub installer"
+    name: Build Stub Installer
     runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: stub/package-lock.json
+          node-version: 20
 
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust cache (stub)
-        uses: Swatinem/rust-cache@v2
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.5
+
+      - name: Configure sccache
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $env:GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $env:GITHUB_ENV
+
+      - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "stub/src-tauri -> target"
-          shared-key: "rpw-stub-${{ runner.os }}"
+          workspaces: stub/src-tauri -> target
           cache-on-failure: true
 
-      - name: Install stub dependencies
+      - name: Install stub npm deps
         working-directory: stub
         run: npm ci
 
       - name: Build stub
         working-directory: stub
-        run: npm run tauri build
+        run: npm run tauri build -- --bundles nsis
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      - name: Prepare stub binary
-        shell: pwsh
-        run: |
-          $src = "stub\src-tauri\target\release\rpw-stub.exe"
-          if (-not (Test-Path $src)) { Write-Error "Stub binary not found!"; exit 1 }
-          Copy-Item $src "RPWorld-Launcher.exe" -Force
-          Write-Host "Stub binary ready: $src"
-
-      - name: Upload stub binary
+      - name: Upload stub artifact
         uses: actions/upload-artifact@v4
         with:
-          name: stub-binary
-          path: RPWorld-Launcher.exe
+          name: stub-installer
+          path: stub/src-tauri/target/release/bundle/nsis/*.exe
           retention-days: 1
 
-  # ══════════════════════════════════════════════════════════════
-  # Job 3 — Создание релиза (ждёт оба)
-  # ══════════════════════════════════════════════════════════════
+  # ── 3. Publish release ──────────────────────────────────────────────────────
   release:
-    name: "Create GitHub Release"
-    runs-on: windows-latest
+    name: Publish Release
     needs: [build-main, build-stub]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download NSIS installer
+      - uses: actions/checkout@v4
+
+      - name: Download main installer
         uses: actions/download-artifact@v4
         with:
-          name: nsis-installer
+          name: main-installer
+          path: dist/main
 
-      - name: Download stub binary
+      - name: Download stub installer
         uses: actions/download-artifact@v4
         with:
-          name: stub-binary
+          name: stub-installer
+          path: dist/stub
 
-      - name: Get version from tag
-        id: ver
-        shell: pwsh
-        run: |
-          $v = "${{ github.ref_name }}" -replace '^v', ''
-          "VERSION=$v" >> $env:GITHUB_OUTPUT
-          Write-Host "Version: $v"
+      - name: List artifacts
+        run: ls -R dist/
 
-      - name: Rename NSIS installer with version
-        shell: pwsh
+      - name: Rename stub exe
         run: |
-          Rename-Item "nsis-setup.exe" "RPWorld.Launcher_${{ steps.ver.outputs.VERSION }}_x64-setup.exe" -Force
+          STUB=$(ls dist/stub/*.exe | head -1)
+          cp "$STUB" dist/RPWorld-Launcher.exe
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "RPWorld Launcher v${{ steps.ver.outputs.VERSION }}"
-          body: |
-            ## RPWorld Launcher v${{ steps.ver.outputs.VERSION }}
-
-            ### Что скачать
-
-            | Файл | Описание |
-            |---|---|
-            | **`RPWorld-Launcher.exe`** | ⭐ **Рекомендуется** — если лаунчер уже установлен — запустит, если нет — скачает и установит автоматически |
-            | `RPWorld.Launcher_*_x64-setup.exe` | Прямой NSIS-установщик |
-
-            ---
-            > ℹ️ `Source code (zip/tar.gz)` — исходный код, не нужен пользователям
+          name: "RPWorld Launcher ${{ github.ref_name }}"
           draft: false
           prerelease: false
+          generate_release_notes: true
           files: |
-            RPWorld.Launcher_${{ steps.ver.outputs.VERSION }}_x64-setup.exe
-            RPWorld-Launcher.exe
+            dist/main/*.exe
+            dist/RPWorld-Launcher.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

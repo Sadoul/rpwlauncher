@@ -168,6 +168,8 @@ pub async fn launch_game(
     java_path: String,
     max_memory: u32,
     game_dir: Option<String>,
+    jvm_args: Option<String>,
+    gpu_mode: Option<String>,
 ) -> Result<String, String> {
     let client = reqwest::Client::new();
     let mc_dir = game_dir
@@ -290,19 +292,45 @@ pub async fn launch_game(
         .clone()
         .unwrap_or_else(|| version.clone());
 
-    let mut args: Vec<String> = vec![
-        format!("-Xmx{}M", max_memory),
-        "-XX:+UnlockExperimentalVMOptions".to_string(),
-        "-XX:+UseG1GC".to_string(),
-        "-XX:G1NewSizePercent=20".to_string(),
-        "-XX:G1ReservePercent=20".to_string(),
-        "-XX:MaxGCPauseMillis=50".to_string(),
-        "-XX:G1HeapRegionSize=32M".to_string(),
-        format!("-Djava.library.path={}", version_dir.join("natives").to_string_lossy()),
-        "-cp".to_string(),
-        classpath,
-        version_info.main_class.clone(),
-    ];
+    // Build JVM args
+    let mut jvm_arg_list: Vec<String> = vec![format!("-Xmx{}M", max_memory)];
+
+    // GPU mode hints
+    let gpu = gpu_mode.as_deref().unwrap_or("auto");
+    if gpu == "discrete" {
+        // On Windows with NVIDIA Optimus: env hint is more reliable than JVM args
+        // We add OpenGL hint
+        jvm_arg_list.push("-Dsun.java2d.opengl=true".to_string());
+    } else if gpu == "integrated" {
+        jvm_arg_list.push("-Dsun.java2d.opengl=false".to_string());
+    }
+
+    // User custom JVM args (split by whitespace, respecting quotes is complex, keep simple)
+    if let Some(ref extra) = jvm_args {
+        let trimmed = extra.trim();
+        if !trimmed.is_empty() {
+            for arg in trimmed.split_whitespace() {
+                jvm_arg_list.push(arg.to_string());
+            }
+        }
+    } else {
+        // Default GC flags when user hasn't set anything
+        jvm_arg_list.extend([
+            "-XX:+UnlockExperimentalVMOptions".to_string(),
+            "-XX:+UseG1GC".to_string(),
+            "-XX:G1NewSizePercent=20".to_string(),
+            "-XX:G1ReservePercent=20".to_string(),
+            "-XX:MaxGCPauseMillis=50".to_string(),
+            "-XX:G1HeapRegionSize=32M".to_string(),
+        ]);
+    }
+
+    jvm_arg_list.push(format!("-Djava.library.path={}", version_dir.join("natives").to_string_lossy()));
+    jvm_arg_list.push("-cp".to_string());
+    jvm_arg_list.push(classpath);
+    jvm_arg_list.push(version_info.main_class.clone());
+
+    let mut args = jvm_arg_list;
 
     // Add game arguments
     if let Some(mc_args) = &version_info.minecraft_arguments {
@@ -337,10 +365,18 @@ pub async fn launch_game(
         }
     }
 
-    Command::new(&java_path)
-        .args(&args)
-        .current_dir(&mc_dir)
-        .spawn()
+    let mut cmd = Command::new(&java_path);
+    cmd.args(&args).current_dir(&mc_dir);
+
+    // GPU env hints for NVIDIA Optimus (discrete GPU selection)
+    let gpu = gpu_mode.as_deref().unwrap_or("auto");
+    if gpu == "discrete" {
+        cmd.env("__NV_PRIME_RENDER_OFFLOAD", "1");
+        cmd.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia");
+        cmd.env("__VK_LAYER_NV_optimus", "NVIDIA_only");
+    }
+
+    cmd.spawn()
         .map_err(|e| format!("Failed to launch Minecraft: {}", e))?;
 
     set_progress("done", 1.0, 1.0, "Игра запущена!");

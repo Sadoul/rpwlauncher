@@ -1,0 +1,283 @@
+use serde::{Deserialize, Serialize};
+
+// ─── Minecraft version manifest ───────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct McVersion {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub version_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct McManifest {
+    versions: Vec<McVersion>,
+}
+
+/// Fetch all Minecraft versions from Mojang.
+/// Source: https://launchermeta.mojang.com/mc/game/version_manifest_v2.json
+#[tauri::command]
+pub async fn get_mc_versions() -> Result<Vec<McVersion>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("RPWorld-Launcher/2.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let manifest: McManifest = client
+        .get("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json")
+        .send()
+        .await
+        .map_err(|_| "Не удалось подключиться к Mojang API".to_string())?
+        .json()
+        .await
+        .map_err(|e| format!("Ошибка разбора ответа Mojang: {e}"))?;
+
+    Ok(manifest.versions)
+}
+
+// ─── Loader versions ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+pub struct LoaderVersion {
+    pub id: String,
+    pub stable: bool,
+}
+
+/// Fetch loader versions for a given Minecraft version.
+/// Supports: forge, neoforge, fabric, optifine
+#[tauri::command]
+pub async fn get_loader_versions(loader: String, mc_version: String) -> Result<Vec<LoaderVersion>, String> {
+    match loader.as_str() {
+        "fabric" => get_fabric_versions(&mc_version).await,
+        "forge" => get_forge_versions(&mc_version).await,
+        "neoforge" => get_neoforge_versions(&mc_version).await,
+        "optifine" => get_optifine_versions(&mc_version).await,
+        _ => Err(format!("Неизвестный загрузчик: {loader}")),
+    }
+}
+
+// ── Fabric ────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct FabricLoaderEntry {
+    loader: FabricLoaderInfo,
+}
+
+#[derive(Deserialize)]
+struct FabricLoaderInfo {
+    version: String,
+    stable: bool,
+}
+
+async fn get_fabric_versions(mc_version: &str) -> Result<Vec<LoaderVersion>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("RPWorld-Launcher/2.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = format!(
+        "https://meta.fabricmc.net/v2/versions/loader/{}",
+        mc_version
+    );
+
+    let entries: Vec<FabricLoaderEntry> = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|_| "Не удалось подключиться к Fabric Meta API".to_string())?
+        .json()
+        .await
+        .map_err(|e| format!("Ошибка разбора Fabric API: {e}"))?;
+
+    Ok(entries
+        .into_iter()
+        .map(|e| LoaderVersion {
+            id: e.loader.version,
+            stable: e.loader.stable,
+        })
+        .collect())
+}
+
+// ── Forge ─────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct ForgePromoSlim {
+    promos: std::collections::HashMap<String, String>,
+}
+
+async fn get_forge_versions(mc_version: &str) -> Result<Vec<LoaderVersion>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("RPWorld-Launcher/2.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // Use promotions slim JSON which lists recommended/latest per MC version
+    let url = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
+
+    let promos: ForgePromoSlim = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| "Не удалось подключиться к Forge Maven".to_string())?
+        .json()
+        .await
+        .map_err(|e| format!("Ошибка разбора Forge API: {e}"))?;
+
+    let mut versions: Vec<LoaderVersion> = Vec::new();
+
+    // Keys like "1.20.1-recommended", "1.20.1-latest"
+    let rec_key = format!("{mc_version}-recommended");
+    let lat_key = format!("{mc_version}-latest");
+
+    if let Some(v) = promos.promos.get(&rec_key) {
+        versions.push(LoaderVersion {
+            id: format!("{mc_version}-{v}"),
+            stable: true,
+        });
+    }
+    if let Some(v) = promos.promos.get(&lat_key) {
+        let id = format!("{mc_version}-{v}");
+        if !versions.iter().any(|x| x.id == id) {
+            versions.push(LoaderVersion {
+                id,
+                stable: false,
+            });
+        }
+    }
+
+    if versions.is_empty() {
+        return Err(format!(
+            "Forge не поддерживает Minecraft {mc_version} или версии временно недоступны"
+        ));
+    }
+
+    Ok(versions)
+}
+
+// ── NeoForge ──────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct NeoForgeApiResponse {
+    versions: Vec<String>,
+}
+
+async fn get_neoforge_versions(mc_version: &str) -> Result<Vec<LoaderVersion>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("RPWorld-Launcher/2.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // NeoForge version format: <mc_major>.<mc_minor>.<mc_patch>-<build>
+    // e.g. for 1.20.1 → versions starting with "1.20.1."
+    let url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge";
+
+    let resp: NeoForgeApiResponse = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| "Не удалось подключиться к NeoForge Maven".to_string())?
+        .json()
+        .await
+        .map_err(|e| format!("Ошибка разбора NeoForge API: {e}"))?;
+
+    // Filter versions that correspond to the given MC version
+    // NeoForge uses e.g. "21.1.83" for MC 1.21.1
+    // For older versions: strip "1." prefix from mc_version for matching
+    let mc_suffix = mc_version.trim_start_matches("1.");
+    let mut filtered: Vec<LoaderVersion> = resp
+        .versions
+        .iter()
+        .filter(|v| v.starts_with(mc_suffix))
+        .rev() // latest first
+        .take(20)
+        .enumerate()
+        .map(|(i, v)| LoaderVersion {
+            id: v.clone(),
+            stable: i == 0,
+        })
+        .collect();
+
+    if filtered.is_empty() {
+        return Err(format!("NeoForge не поддерживает Minecraft {mc_version}"));
+    }
+
+    Ok(filtered)
+}
+
+// ── OptiFine ──────────────────────────────────────────────────────────────────
+
+async fn get_optifine_versions(mc_version: &str) -> Result<Vec<LoaderVersion>, String> {
+    // OptiFine doesn't have a public API. We maintain a curated list of known versions.
+    let known: &[(&str, &[&str])] = &[
+        ("1.20.1", &["HD_U_I6", "HD_U_I5", "HD_U_I4", "HD_U_I3", "HD_U_I2", "HD_U_I1"]),
+        ("1.20",   &["HD_U_I3", "HD_U_I2", "HD_U_I1"]),
+        ("1.19.4", &["HD_U_H9", "HD_U_H8", "HD_U_H7"]),
+        ("1.19.2", &["HD_U_H9", "HD_U_H8", "HD_U_H7", "HD_U_H6", "HD_U_H5"]),
+        ("1.18.2", &["HD_U_H7", "HD_U_H6", "HD_U_H5"]),
+        ("1.17.1", &["HD_U_H1"]),
+        ("1.16.5", &["HD_U_G8", "HD_U_G7", "HD_U_G6", "HD_U_G5"]),
+    ];
+
+    for (ver, builds) in known {
+        if *ver == mc_version {
+            return Ok(builds
+                .iter()
+                .enumerate()
+                .map(|(i, b)| LoaderVersion {
+                    id: format!("OptiFine_{ver}_{b}"),
+                    stable: i == 0,
+                })
+                .collect());
+        }
+    }
+
+    Err(format!("OptiFine не имеет известных версий для Minecraft {mc_version}. Проверьте https://optifine.net вручную."))
+}
+
+// ─── Install custom modpack ───────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn install_custom_modpack(
+    name: String,
+    loader: String,
+    mc_version: String,
+    loader_version: String,
+    max_memory: u32,
+    jvm_args: String,
+) -> Result<(), String> {
+    use std::fs;
+    use std::path::PathBuf;
+
+    // Create modpack directory
+    let modpacks_dir = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".rpworld")
+        .join("modpacks")
+        .join(&name);
+
+    fs::create_dir_all(&modpacks_dir)
+        .map_err(|e| format!("Не удалось создать папку модпака: {e}"))?;
+
+    // Write modpack manifest
+    let manifest = serde_json::json!({
+        "name": name,
+        "loader": loader,
+        "mc_version": mc_version,
+        "loader_version": loader_version,
+        "max_memory": max_memory,
+        "jvm_args": jvm_args,
+        "created_at": chrono::Utc::now().to_rfc3339(),
+    });
+
+    fs::write(
+        modpacks_dir.join("modpack.json"),
+        serde_json::to_string_pretty(&manifest).unwrap(),
+    )
+    .map_err(|e| format!("Не удалось записать манифест: {e}"))?;
+
+    // Create mods folder
+    fs::create_dir_all(modpacks_dir.join("mods"))
+        .map_err(|e| format!("Не удалось создать папку mods: {e}"))?;
+
+    Ok(())
+}
