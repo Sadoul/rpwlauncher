@@ -1,6 +1,6 @@
 [package]
 name = "rpw-stub"
-version = "1.0.6"
+version = "1.0.7"
 edition = "2021"
 description = "RPWorld Launcher Installer"
 
@@ -24,6 +24,7 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
 dirs = "5"
 tauri-plugin-shell = "2"
+winreg = "0.52"
 
 [profile.release]
 opt-level = "s"

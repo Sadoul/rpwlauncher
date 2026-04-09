@@ -7,24 +7,92 @@ use tauri::{AppHandle, Emitter};
 const GITHUB_REPO: &str = "Sadoul/rpwlauncher";
 const INSTALLER_ASSET_SUFFIX: &str = "_x64-setup.exe";
 
-/// Standard install path for Tauri currentUser NSIS: %LOCALAPPDATA%\Programs\<productName>
-fn get_launcher_exe() -> Option<PathBuf> {
-    let candidates = vec![
-        dirs::data_local_dir()
-            .map(|d| d.join("Programs").join("RPWorld Launcher").join("RPWorld Launcher.exe")),
-        dirs::data_local_dir()
-            .map(|d| d.join("RPWorld Launcher").join("RPWorld Launcher.exe")),
-        // Fallback: same directory as stub
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("RPWorld Launcher.exe"))),
+/// Possible binary names Tauri NSIS may install under.
+/// Tauri uses the Cargo package binary name ("rpw-launcher") as the .exe name inside the bundle,
+/// but we also check the productName variant just in case.
+const EXE_NAMES: &[&str] = &["rpw-launcher.exe", "RPWorld Launcher.exe", "RPWorld-Launcher.exe"];
+
+/// Returns the install location from the Windows registry if available.
+#[cfg(windows)]
+fn install_location_from_registry() -> Option<PathBuf> {
+    // Tauri v2 NSIS currentUser mode registers under:
+    //   HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{identifier}_is1
+    // identifier = "com.rpworld.launcher"
+    let keys = [
+        r"Software\Microsoft\Windows\CurrentVersion\Uninstall\com.rpworld.launcher_is1",
+        r"Software\Microsoft\Windows\CurrentVersion\Uninstall\RPWorld Launcher_is1",
     ];
 
-    for opt in candidates.into_iter().flatten() {
-        if opt.exists() {
-            return Some(opt);
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    for key_path in &keys {
+        if let Ok(key) = hkcu.open_subkey(key_path) {
+            if let Ok(loc) = key.get_value::<String, _>("InstallLocation") {
+                let path = PathBuf::from(&loc);
+                if path.exists() {
+                    return Some(path);
+                }
+            }
         }
     }
+    None
+}
+
+#[cfg(not(windows))]
+fn install_location_from_registry() -> Option<PathBuf> {
+    None
+}
+
+/// Find the installed launcher exe.
+fn get_launcher_exe() -> Option<PathBuf> {
+    // 1. Check registry for install location, then look for known exe names
+    if let Some(install_dir) = install_location_from_registry() {
+        for name in EXE_NAMES {
+            let candidate = install_dir.join(name);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+        // Fallback: scan the dir for any .exe that isn't an uninstaller
+        if let Ok(entries) = std::fs::read_dir(&install_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().map(|e| e == "exe").unwrap_or(false) {
+                    let fname = p.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+                    if !fname.contains("uninstall") {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Standard Tauri NSIS currentUser install path candidates
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    let local = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("C:\\Users\\Default\\AppData\\Local"));
+
+    for name in EXE_NAMES {
+        candidates.push(local.join("Programs").join("RPWorld Launcher").join(name));
+        candidates.push(local.join("Programs").join("com.rpworld.launcher").join(name));
+        candidates.push(local.join("RPWorld Launcher").join(name));
+    }
+
+    // 3. Same directory as the stub itself
+    if let Ok(stub_dir) = std::env::current_exe().map(|p| p.parent().map(|d| d.to_path_buf()).unwrap_or_default()) {
+        for name in EXE_NAMES {
+            candidates.push(stub_dir.join(name));
+        }
+    }
+
+    for path in candidates {
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
     None
 }
 
@@ -35,10 +103,21 @@ fn check_installed() -> bool {
 
 #[tauri::command]
 async fn launch_launcher(app: AppHandle) -> Result<(), String> {
-    let exe = get_launcher_exe().ok_or("RPWorld Launcher не найден после установки")?;
+    let exe = get_launcher_exe().ok_or_else(|| {
+        // Give a helpful diagnostic message including what we searched
+        let local = dirs::data_local_dir()
+            .map(|d| d.display().to_string())
+            .unwrap_or_else(|| "%LOCALAPPDATA%".to_string());
+        format!(
+            "RPWorld Launcher не ��айден. Ожидаемый путь: {}\\Programs\\RPWorld Launcher\\rpw-launcher.exe",
+            local
+        )
+    })?;
+
     std::process::Command::new(&exe)
         .spawn()
-        .map_err(|e| format!("Не удалось запустить: {e}"))?;
+        .map_err(|e| format!("Не у��алось запустить: {e}"))?;
+
     app.exit(0);
     Ok(())
 }
@@ -103,7 +182,6 @@ async fn download_and_install(app: AppHandle) -> Result<(), String> {
     let total_size = asset.size;
     let asset_name = &asset.name;
 
-    // Download to temp dir
     let temp_dir = std::env::temp_dir();
     let dest_path = temp_dir.join(asset_name);
 
@@ -167,7 +245,7 @@ async fn download_and_install(app: AppHandle) -> Result<(), String> {
         .status()
         .map_err(|e| format!("Не удалось запустить установщик: {e}"))?;
 
-    // Clean up temp installer
+    // Clean up
     let _ = std::fs::remove_file(&dest_path);
 
     if !status.success() {
@@ -177,8 +255,10 @@ async fn download_and_install(app: AppHandle) -> Result<(), String> {
         ));
     }
 
-    emit_progress(&app, 97, "Установка завершена!", None, None);
+    // Small delay to let NSIS finish writing files to disk
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 
+    emit_progress(&app, 97, "Установка завершена!", None, None);
     Ok(())
 }
 

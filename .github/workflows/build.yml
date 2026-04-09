@@ -5,15 +5,23 @@ on:
     tags:
       - 'v*'
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Два независимых job'а компилируются ПАРАЛЛЕЛЬНО, потом третий собирает релиз.
+# Первый холодный прогон: ~8-10 мин. Последующие (кэш): ~3-5 мин.
+# ─────────────────────────────────────────────────────────────────────────────
+
 jobs:
-  build-windows:
+  # ══════════════════════════════════════════════════════════════
+  # Job 1 — Главное приложение (NSIS установщик)
+  # ══════════════════════════════════════════════════════════════
+  build-main:
+    name: "Build main app (NSIS)"
     runs-on: windows-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,46 +34,23 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      # ─────────────────────────────────────────────────────────
-      # Swatinem/rust-cache — лучший Rust-кэш.
-      # Первая сборка: ~15 мин. Последующие: ~3-5 мин.
-      # Кэширует ~/.cargo/registry (общий) + оба target/
-      # ─────────────────────────────────────────────────────────
-      - name: Rust cache
+      - name: Rust cache (main app)
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            src-tauri -> target
-            stub/src-tauri -> target
+          workspaces: "src-tauri -> target"
+          shared-key: "rpw-main-${{ runner.os }}"
           cache-on-failure: true
-          shared-key: "rpw-${{ runner.os }}"
 
-      # ─── Главное приложение ───────────────────────────────────
-      - name: Install main app dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Build main Tauri app (NSIS installer)
+      - name: Build Tauri app
         run: npm run tauri build
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      # ─── Stub / Красивый установщик ──────────────────────────
-      - name: Install stub dependencies
-        working-directory: stub
-        run: npm ci
-
-      - name: Build stub Tauri app
-        working-directory: stub
-        run: npm run tauri build
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ""
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-
-      # ─── Артефакты ───────────────────────────────────────────
-      - name: Find NSIS installer (main app)
+      - name: Find NSIS installer
         id: nsis
         shell: pwsh
         run: |
@@ -73,21 +58,92 @@ jobs:
                -Filter "*-setup.exe" -ErrorAction SilentlyContinue |
                Select-Object -First 1
           if (-not $f) { Write-Error "NSIS not found!"; exit 1 }
-          "NSIS_PATH=$($f.FullName)" >> $env:GITHUB_OUTPUT
-          Write-Host "NSIS: $($f.FullName)"
+          Copy-Item $f.FullName "nsis-setup.exe" -Force
+          Write-Host "Found: $($f.FullName)"
 
-      - name: Prepare RPWorld-Launcher.exe (stub binary)
-        id: stub_bin
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsis-installer
+          path: nsis-setup.exe
+          retention-days: 1
+
+  # ══════════════════════════════════════════════════════════════
+  # Job 2 — Stub (умный установщик/ярлык)
+  # ══════════════════════════════════════════════════════════════
+  build-stub:
+    name: "Build stub installer"
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: stub/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache (stub)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "stub/src-tauri -> target"
+          shared-key: "rpw-stub-${{ runner.os }}"
+          cache-on-failure: true
+
+      - name: Install stub dependencies
+        working-directory: stub
+        run: npm ci
+
+      - name: Build stub
+        working-directory: stub
+        run: npm run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Prepare stub binary
         shell: pwsh
         run: |
-          # Берём сырой .exe бинарник stub, а не его NSIS-установщик
           $src = "stub\src-tauri\target\release\rpw-stub.exe"
           if (-not (Test-Path $src)) { Write-Error "Stub binary not found!"; exit 1 }
           Copy-Item $src "RPWorld-Launcher.exe" -Force
-          "STUB_PATH=RPWorld-Launcher.exe" >> $env:GITHUB_OUTPUT
-          Write-Host "Stub binary: $src"
+          Write-Host "Stub binary ready: $src"
 
-      # ─── Версия и релиз ──────────────────────────────────────
+      - name: Upload stub binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: stub-binary
+          path: RPWorld-Launcher.exe
+          retention-days: 1
+
+  # ══════════════════════════════════════════════════════════════
+  # Job 3 — Создание релиза (ждёт оба)
+  # ══════════════════════════════════════════════════════════════
+  release:
+    name: "Create GitHub Release"
+    runs-on: windows-latest
+    needs: [build-main, build-stub]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download NSIS installer
+        uses: actions/download-artifact@v4
+        with:
+          name: nsis-installer
+
+      - name: Download stub binary
+        uses: actions/download-artifact@v4
+        with:
+          name: stub-binary
+
       - name: Get version from tag
         id: ver
         shell: pwsh
@@ -95,6 +151,11 @@ jobs:
           $v = "${{ github.ref_name }}" -replace '^v', ''
           "VERSION=$v" >> $env:GITHUB_OUTPUT
           Write-Host "Version: $v"
+
+      - name: Rename NSIS installer with version
+        shell: pwsh
+        run: |
+          Rename-Item "nsis-setup.exe" "RPWorld.Launcher_${{ steps.ver.outputs.VERSION }}_x64-setup.exe" -Force
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -107,15 +168,15 @@ jobs:
 
             | Файл | Описание |
             |---|---|
-            | **`RPWorld-Launcher.exe`** | ⭐ **Рекомендуется** — умный установщик: если лаунчер уже установлен — запустит его, если нет — скачает и установит автоматически с красивым UI |
+            | **`RPWorld-Launcher.exe`** | ⭐ **Рекомендуется** — если лаунчер уже установлен — запустит, если нет — скачает и установит автоматически |
             | `RPWorld.Launcher_*_x64-setup.exe` | Прямой NSIS-установщик |
 
             ---
-            > ℹ️ `Source code (zip/tar.gz)` — это исходный код, **не нужен** обычным пользователям
+            > ℹ️ `Source code (zip/tar.gz)` — исходный код, не нужен пользователям
           draft: false
           prerelease: false
           files: |
-            ${{ steps.nsis.outputs.NSIS_PATH }}
-            ${{ steps.stub_bin.outputs.STUB_PATH }}
+            RPWorld.Launcher_${{ steps.ver.outputs.VERSION }}_x64-setup.exe
+            RPWorld-Launcher.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

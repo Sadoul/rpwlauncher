@@ -719,7 +719,7 @@ dependencies = [
  "rustc_version",
  "toml 0.9.12+spec-1.1.0",
  "vswhom",
- "winreg",
+ "winreg 0.55.0",
 ]
 
 [[package]]
@@ -2984,7 +2984,7 @@ dependencies = [
 
 [[package]]
 name = "rpw-stub"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "dirs 5.0.1",
  "futures-util",
@@ -2995,6 +2995,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-shell",
  "tokio",
+ "winreg 0.52.0",
 ]
 
 [[package]]
@@ -5338,6 +5339,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09dac053f1cd375980747450bfc7250c264eaae0583872e845c0c7cd578872b5"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winreg"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a277a57398d4bfa075df44f501a17cfdf8542d224f0d36095a2adc7aee4ef0a5"
+dependencies = [
+ "cfg-if",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
