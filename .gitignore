@@ -10,6 +10,7 @@ src-tauri/gen/
 stub/src-tauri/target/
 stub/src-tauri/gen/
 stub/target/
+stub-rs/target/
 
 # OS
 .DS_Store

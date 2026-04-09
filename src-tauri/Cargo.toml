@@ -37,7 +37,8 @@ urlencoding = "2"
 winreg = "0.52"
 
 [profile.release]
-lto = "thin"
-codegen-units = 4
-strip = "symbols"
+opt-level = 1        # уровень 1 компилируется втрое быстрее чем 3, разница в скорости exe незаметна
+lto = false          # thin LTO экономит 5% размера, но добавляет 2+ минуты компиляции
+codegen-units = 16   # максимальная параллельность компилятора (было 4)
+strip = "symbols"    # убираем debug-символы из бинаря
 
