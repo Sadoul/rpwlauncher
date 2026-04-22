@@ -13,10 +13,68 @@ interface AuthPanelProps {
   onLogin: (account: Account) => void;
 }
 
-type AuthMode = "offline" | "microsoft";
+/* ── SVG Icons ─────────────────────────────────────────────── */
+const UserIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="8" r="4" />
+    <path d="M5.5 21a6.5 6.5 0 0 1 13 0" />
+  </svg>
+);
+
+const MicrosoftIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 21 21" fill="none">
+    <rect x="1" y="1" width="9" height="9" rx="1" fill="#F25022" />
+    <rect x="11" y="1" width="9" height="9" rx="1" fill="#7FBA00" />
+    <rect x="1" y="11" width="9" height="9" rx="1" fill="#00A4EF" />
+    <rect x="11" y="11" width="9" height="9" rx="1" fill="#FFB900" />
+  </svg>
+);
+
+const ShieldIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2l7.5 4v5.5c0 5-3 8.5-7.5 10.5-4.5-2-7.5-5.5-7.5-10.5V6L12 2z" />
+    <path d="M9 12l2 2 4-4" />
+  </svg>
+);
+
+const WifiOffIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none" />
+    <path d="M8.5 14.5a5 5 0 0 1 7 0" />
+    <path d="M5 11a10 10 0 0 1 14 0" />
+  </svg>
+);
+
+const ArrowIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12h14M12 5l7 7-7 7" />
+  </svg>
+);
+
+/* ── Overlay animation variants ────────────────────────────── */
+const overlayVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.4, ease: "easeOut" } },
+};
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 30, scale: 0.96 },
+  visible: {
+    opacity: 1, y: 0, scale: 1,
+    transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.1 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: (i: number) => ({
+    opacity: 1, y: 0,
+    transition: { duration: 0.4, ease: "easeOut", delay: 0.2 + i * 0.08 },
+  }),
+};
 
 export default function AuthPanel({ onLogin }: AuthPanelProps) {
-  const [mode, setMode] = useState<AuthMode>("offline");
+  const [selectedMethod, setSelectedMethod] = useState<"offline" | "microsoft" | null>(null);
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -37,7 +95,6 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
 
     setLoading(true);
     setError("");
-
     try {
       const account = await invoke<Account>("login_offline", { username: username.trim() });
       onLogin(account);
@@ -51,7 +108,6 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
   const handleMicrosoftLogin = async () => {
     setLoading(true);
     setError("");
-
     try {
       const account = await invoke<Account>("login_microsoft");
       onLogin(account);
@@ -64,158 +120,213 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
 
   return (
     <motion.div
-      className="auth-panel"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="auth-modal-overlay"
+      variants={overlayVariants}
+      initial="hidden"
+      animate="visible"
+      exit="hidden"
     >
-      <motion.div
-        className="auth-title"
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.4 }}
-      >
-        Добро пожаловать в RPWorld
-      </motion.div>
+      {/* Decorative floating orbs */}
+      <div className="auth-modal-orbs">
+        <motion.div
+          className="auth-orb auth-orb-1"
+          animate={{ x: [0, 30, -20, 0], y: [0, -20, 10, 0] }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        />
+        <motion.div
+          className="auth-orb auth-orb-2"
+          animate={{ x: [0, -25, 15, 0], y: [0, 15, -25, 0] }}
+          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+        />
+        <motion.div
+          className="auth-orb auth-orb-3"
+          animate={{ x: [0, 18, -12, 0], y: [0, -30, 20, 0] }}
+          transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+        />
+      </div>
 
+      {/* Main glass card */}
       <motion.div
-        className="auth-subtitle"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.4 }}
+        className="auth-modal-card"
+        variants={cardVariants}
+        initial="hidden"
+        animate="visible"
       >
-        Войдите, чтобы начать играть
-      </motion.div>
+        {/* Top accent line */}
+        <div className="auth-modal-accent-line" />
 
-      <motion.div
-        className="auth-tabs"
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.3, duration: 0.3 }}
-      >
-        <button
-          className={`auth-tab ${mode === "offline" ? "active" : ""}`}
-          onClick={() => { setMode("offline"); setError(""); }}
-        >
-          Офлайн
-        </button>
-        <button
-          className={`auth-tab ${mode === "microsoft" ? "active" : ""}`}
-          onClick={() => { setMode("microsoft"); setError(""); }}
-        >
-          Microsoft
-        </button>
-      </motion.div>
+        {/* Header */}
+        <motion.div className="auth-modal-header" custom={0} variants={itemVariants} initial="hidden" animate="visible">
+          <div className="auth-modal-logo-wrap">
+            <img src="/icons/launcher.png" alt="RPWorld" className="auth-modal-logo" draggable={false} />
+            <div className="auth-modal-logo-glow" />
+          </div>
+          <h1 className="auth-modal-title">Добро пожаловать</h1>
+          <p className="auth-modal-subtitle">Выберите способ входа в лаунчер</p>
+        </motion.div>
 
-      <AnimatePresence mode="wait">
-        {mode === "offline" ? (
-          <motion.div
-            key="offline"
-            className="auth-form"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.25 }}
+        {/* Method cards */}
+        <motion.div className="auth-modal-methods" custom={1} variants={itemVariants} initial="hidden" animate="visible">
+          {/* Offline card */}
+          <motion.button
+            className={`auth-method-card${selectedMethod === "offline" ? " selected" : ""}`}
+            onClick={() => { setSelectedMethod("offline"); setError(""); }}
+            whileHover={{ scale: 1.015 }}
+            whileTap={{ scale: 0.99 }}
           >
-            <div className="input-group">
-              <label>Никнейм</label>
-              <input
-                type="text"
-                placeholder="Введите никнейм..."
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleOfflineLogin()}
-                maxLength={16}
-                autoFocus
-              />
+            <div className="auth-method-icon offline-icon">
+              <WifiOffIcon />
             </div>
+            <div className="auth-method-info">
+              <span className="auth-method-name">Офлайн режим</span>
+              <span className="auth-method-desc">Играйте без аккаунта Microsoft</span>
+            </div>
+            <div className="auth-method-arrow">
+              <ArrowIcon />
+            </div>
+          </motion.button>
 
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                style={{ color: "var(--accent-red)", fontSize: "13px", textAlign: "center" }}
-              >
-                {error}
-              </motion.div>
-            )}
-
-            <motion.button
-              className="auth-button"
-              onClick={handleOfflineLogin}
-              disabled={loading || !username.trim()}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {loading ? (
-                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-                  Вход...
-                </span>
-              ) : (
-                "Войти"
-              )}
-            </motion.button>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="microsoft"
-            className="auth-form"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.25 }}
+          {/* Microsoft card */}
+          <motion.button
+            className={`auth-method-card${selectedMethod === "microsoft" ? " selected" : ""}`}
+            onClick={() => { setSelectedMethod("microsoft"); setError(""); }}
+            whileHover={{ scale: 1.015 }}
+            whileTap={{ scale: 0.99 }}
           >
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                style={{
-                  color: "var(--accent-orange)",
-                  fontSize: "13px",
-                  textAlign: "center",
-                  padding: "12px",
-                  background: "rgba(245, 158, 11, 0.1)",
-                  borderRadius: "8px",
-                  border: "1px solid rgba(245, 158, 11, 0.2)",
-                  lineHeight: "1.5",
-                }}
-              >
-                {error}
-              </motion.div>
-            )}
-
-            <motion.button
-              className="auth-button microsoft"
-              onClick={handleMicrosoftLogin}
-              disabled={loading}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {loading ? (
-                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-                  Авторизация...
-                </span>
-              ) : (
-                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    <rect x="1" y="1" width="6.5" height="6.5" />
-                    <rect x="8.5" y="1" width="6.5" height="6.5" />
-                    <rect x="1" y="8.5" width="6.5" height="6.5" />
-                    <rect x="8.5" y="8.5" width="6.5" height="6.5" />
-                  </svg>
-                  Войти через Microsoft
-                </span>
-              )}
-            </motion.button>
-
-            <div style={{ fontSize: "12px", color: "var(--text-muted)", textAlign: "center", lineHeight: "1.5" }}>
-              Откроется браузер для авторизации через ваш аккаунт Microsoft
+            <div className="auth-method-icon microsoft-icon">
+              <MicrosoftIcon />
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <div className="auth-method-info">
+              <span className="auth-method-name">Microsoft</span>
+              <span className="auth-method-desc">Лицензионный аккаунт</span>
+            </div>
+            <div className="auth-method-badge">
+              <ShieldIcon />
+            </div>
+            <div className="auth-method-arrow">
+              <ArrowIcon />
+            </div>
+          </motion.button>
+        </motion.div>
+
+        {/* Expanded form area */}
+        <AnimatePresence mode="wait">
+          {selectedMethod === "offline" && (
+            <motion.div
+              key="offline-form"
+              className="auth-modal-form"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="auth-form-inner">
+                <div className="auth-input-wrap">
+                  <div className="auth-input-icon">
+                    <UserIcon />
+                  </div>
+                  <input
+                    type="text"
+                    className="auth-modal-input"
+                    placeholder="Введите никнейм..."
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleOfflineLogin()}
+                    maxLength={16}
+                    autoFocus
+                  />
+                </div>
+
+                <AnimatePresence>
+                  {error && (
+                    <motion.div
+                      className="auth-modal-error"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                    >
+                      {error}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <motion.button
+                  className="auth-modal-submit"
+                  onClick={handleOfflineLogin}
+                  disabled={loading || !username.trim()}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {loading ? (
+                    <span className="auth-modal-loading">
+                      <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                      Вход...
+                    </span>
+                  ) : (
+                    "Войти"
+                  )}
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+
+          {selectedMethod === "microsoft" && (
+            <motion.div
+              key="microsoft-form"
+              className="auth-modal-form"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="auth-form-inner">
+                <AnimatePresence>
+                  {error && (
+                    <motion.div
+                      className="auth-modal-error"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                    >
+                      {error}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <motion.button
+                  className="auth-modal-submit microsoft"
+                  onClick={handleMicrosoftLogin}
+                  disabled={loading}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {loading ? (
+                    <span className="auth-modal-loading">
+                      <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                      Авторизация...
+                    </span>
+                  ) : (
+                    <span className="auth-modal-loading">
+                      <MicrosoftIcon />
+                      Войти через Microsoft
+                    </span>
+                  )}
+                </motion.button>
+
+                <p className="auth-modal-hint">
+                  Откроется браузер для авторизации через ваш аккаунт Microsoft
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Bottom decorative */}
+        <motion.div className="auth-modal-footer" custom={3} variants={itemVariants} initial="hidden" animate="visible">
+          <div className="auth-modal-divider" />
+          <span className="auth-modal-version">RPWorld Launcher</span>
+        </motion.div>
+      </motion.div>
     </motion.div>
   );
 }

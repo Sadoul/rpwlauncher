@@ -353,11 +353,11 @@ button { font-family: inherit; }
 }
 .account-type { font-size: 10px; color: var(--text-muted); }
 .logout-btn {
-  width: 26px; height: 26px;
+  width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
   border: none; background: transparent;
   color: var(--text-muted); cursor: pointer;
-  border-radius: 6px; font-size: 14px;
+  border-radius: 8px; font-size: 16px;
   transition: all var(--ease);
 }
 .logout-btn:hover { background: rgba(192,57,43,0.15); color: var(--accent-red); }
@@ -424,17 +424,296 @@ button { font-family: inherit; }
 }
 
 /* ══════════════════════════════════════════════════════════════
-   AUTH PANEL
+   AUTH MODAL — Premium Glass Overlay
    ══════════════════════════════════════════════════════════════ */
+.auth-modal-overlay {
+  position: absolute; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 8, 6, 0.25);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+[data-theme="dark"] .auth-modal-overlay {
+  background: rgba(2, 6, 14, 0.35);
+}
+
+/* Floating decorative orbs */
+.auth-modal-orbs { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.auth-orb { position: absolute; border-radius: 50%; filter: blur(80px); }
+.auth-orb-1 {
+  width: 340px; height: 340px; top: 8%; left: 10%;
+  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+}
+.auth-orb-2 {
+  width: 260px; height: 260px; bottom: 12%; right: 8%;
+  background: radial-gradient(circle, rgba(var(--accent-2-rgb, 232,149,90), 0.15) 0%, transparent 70%);
+}
+[data-theme="dark"] .auth-orb-2 {
+  background: radial-gradient(circle, rgba(0,188,212,0.12) 0%, transparent 70%);
+}
+.auth-orb-3 {
+  width: 200px; height: 200px; top: 50%; left: 55%;
+  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+  opacity: 0.5;
+}
+
+/* Glass card */
+.auth-modal-card {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 460px;
+  background: var(--bg-glass-solid);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--r-lg);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 1px rgba(255,255,255,0.04) inset,
+    0 1px 0 rgba(255,255,255,0.06) inset;
+  padding: 36px 32px 28px;
+  display: flex; flex-direction: column; gap: 24px;
+  overflow: hidden;
+}
+[data-theme="dark"] .auth-modal-card {
+  box-shadow:
+    var(--shadow-lg),
+    0 0 60px rgba(0,230,118,0.06),
+    0 0 0 1px rgba(255,255,255,0.03) inset,
+    0 1px 0 rgba(255,255,255,0.04) inset;
+}
+
+/* Top accent gradient line */
+.auth-modal-accent-line {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent);
+  opacity: 0.7;
+}
+
+/* Header */
+.auth-modal-header {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 10px; text-align: center;
+}
+.auth-modal-logo-wrap {
+  position: relative;
+  width: 64px; height: 64px;
+  margin-bottom: 4px;
+}
+.auth-modal-logo {
+  width: 64px; height: 64px;
+  border-radius: 16px; object-fit: cover;
+  position: relative; z-index: 1;
+  box-shadow: 0 4px 20px var(--accent-glow);
+}
+.auth-modal-logo-glow {
+  position: absolute; inset: -8px;
+  border-radius: 22px;
+  background: var(--accent-glow);
+  filter: blur(16px);
+  animation: glowPulse 3s ease infinite;
+}
+.auth-modal-title {
+  font-size: 22px; font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+.auth-modal-subtitle {
+  font-size: 13px; color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Method cards container */
+.auth-modal-methods {
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+/* Individual method card */
+.auth-method-card {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  cursor: pointer;
+  text-align: left; width: 100%;
+  font-family: inherit;
+  transition: all 0.25s ease;
+  position: relative;
+}
+.auth-method-card:hover {
+  background: var(--bg-glass-hover);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-sm);
+}
+.auth-method-card.selected {
+  background: var(--bg-glass-active);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow), var(--shadow-md);
+}
+
+/* Method icon container */
+.auth-method-icon {
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.auth-method-icon.offline-icon {
+  background: linear-gradient(135deg, rgba(var(--accent-green-rgb, 74,155,77), 0.12), rgba(var(--accent-green-rgb, 74,155,77), 0.05));
+  color: var(--accent-green);
+  border: 1px solid rgba(var(--accent-green-rgb, 74,155,77), 0.15);
+}
+[data-theme="dark"] .auth-method-icon.offline-icon {
+  background: linear-gradient(135deg, rgba(0,230,118,0.12), rgba(0,230,118,0.04));
+  border-color: rgba(0,230,118,0.15);
+  color: var(--accent-green);
+}
+.auth-method-icon.microsoft-icon {
+  background: linear-gradient(135deg, rgba(37,99,235,0.1), rgba(37,99,235,0.03));
+  border: 1px solid rgba(37,99,235,0.12);
+}
+[data-theme="dark"] .auth-method-icon.microsoft-icon {
+  background: linear-gradient(135deg, rgba(37,99,235,0.15), rgba(37,99,235,0.05));
+  border-color: rgba(37,99,235,0.2);
+}
+
+/* Method text info */
+.auth-method-info {
+  display: flex; flex-direction: column; gap: 2px; flex: 1;
+}
+.auth-method-name {
+  font-size: 14px; font-weight: 600; color: var(--text);
+}
+.auth-method-desc {
+  font-size: 11px; color: var(--text-muted);
+}
+
+/* Shield badge for microsoft */
+.auth-method-badge {
+  color: var(--accent-green);
+  opacity: 0.7;
+}
+
+/* Arrow indicator */
+.auth-method-arrow {
+  color: var(--text-muted);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.25s ease;
+}
+.auth-method-card:hover .auth-method-arrow,
+.auth-method-card.selected .auth-method-arrow {
+  opacity: 0.6;
+  transform: translateX(0);
+}
+.auth-method-card.selected .auth-method-arrow { color: var(--accent); opacity: 0.9; }
+
+/* Expanded form */
+.auth-modal-form { overflow: hidden; }
+.auth-form-inner {
+  display: flex; flex-direction: column; gap: 12px;
+  padding-top: 4px;
+}
+
+/* Input with icon */
+.auth-input-wrap {
+  position: relative;
+  display: flex; align-items: center;
+}
+.auth-input-icon {
+  position: absolute; left: 13px;
+  color: var(--text-muted);
+  display: flex; align-items: center;
+  transition: color 0.2s ease;
+  pointer-events: none;
+}
+.auth-input-wrap:focus-within .auth-input-icon { color: var(--accent); }
+.auth-modal-input {
+  width: 100%; padding: 12px 14px 12px 44px;
+  font-size: 14px; font-family: 'Inter', sans-serif;
+  color: var(--text);
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  outline: none;
+  transition: all 0.25s ease;
+}
+.auth-modal-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  background: var(--bg-glass-active);
+}
+.auth-modal-input::placeholder { color: var(--text-muted); }
+
+/* Error message */
+.auth-modal-error {
+  font-size: 12px; color: var(--accent-red);
+  text-align: center;
+  padding: 8px 12px;
+  background: rgba(192,57,43,0.07);
+  border: 1px solid rgba(192,57,43,0.15);
+  border-radius: var(--r-sm);
+  line-height: 1.4;
+}
+[data-theme="dark"] .auth-modal-error {
+  background: rgba(255,61,61,0.08);
+  border-color: rgba(255,61,61,0.2);
+  color: #ff8a80;
+}
+
+/* Submit button */
+.auth-modal-submit {
+  padding: 12px 24px; font-size: 14px; font-weight: 700;
+  color: var(--text-on-accent);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: none; border-radius: var(--r-sm);
+  cursor: pointer; font-family: inherit;
+  transition: all 0.25s ease;
+  box-shadow: var(--shadow-glow);
+}
+.auth-modal-submit:hover:not(:disabled) {
+  filter: brightness(1.1); transform: translateY(-1px);
+  box-shadow: 0 6px 24px var(--accent-glow-strong);
+}
+.auth-modal-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; filter: none; }
+.auth-modal-submit.microsoft {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(37,99,235,0.25);
+}
+.auth-modal-submit.microsoft:hover:not(:disabled) {
+  box-shadow: 0 6px 24px rgba(37,99,235,0.4);
+}
+
+.auth-modal-loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+
+.auth-modal-hint {
+  font-size: 11px; color: var(--text-muted);
+  text-align: center; line-height: 1.5;
+}
+
+/* Footer */
+.auth-modal-footer {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding-top: 4px;
+}
+.auth-modal-divider {
+  width: 60px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-hover), transparent);
+}
+.auth-modal-version {
+  font-size: 10px; color: var(--text-muted);
+  letter-spacing: 1.5px; text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* ── Legacy auth classes kept for any external usage ─────── */
 .auth-container {
   display: flex; flex-direction: column; align-items: center;
-  justify-content: center; flex: 1; padding: 32px;
-  gap: 28px;
-}
-.auth-logo {
-  width: 64px; height: 64px; border-radius: 16px;
-  object-fit: cover;
-  box-shadow: 0 4px 20px var(--accent-glow);
+  justify-content: center; flex: 1; padding: 32px; gap: 28px;
 }
 .auth-form { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 300px; }
 .input-group { position: relative; }
@@ -459,18 +738,6 @@ button { font-family: inherit; }
   background: var(--bg-glass-active);
 }
 .input-group input::placeholder { color: var(--text-muted); }
-
-.auth-button {
-  padding: 11px 22px; font-size: 13px; font-weight: 700;
-  color: var(--text-on-accent); border: none; border-radius: var(--r-sm);
-  cursor: pointer;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  transition: all var(--ease); margin-top: 4px;
-  box-shadow: var(--shadow-glow);
-}
-.auth-button:hover { filter: brightness(1.1); transform: translateY(-1px); }
-.auth-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; filter: none; }
-.auth-button.microsoft { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; box-shadow: none; }
 
 /* ══════════════════════════════════════════════════════════════
    SETTINGS PANEL

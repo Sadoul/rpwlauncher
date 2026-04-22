@@ -185,58 +185,64 @@ export default function App() {
         />
 
         <div className="content-area">
-          {!account ? (
-            <motion.div
-              className="game-panel"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35 }}
-            >
+          {/* Auth widget overlay — shown when not logged in, inside the content area */}
+          <AnimatePresence>
+            {!account && !loading && (
               <AuthPanel onLogin={handleLogin} />
-            </motion.div>
-          ) : (
-            <AnimatePresence mode="wait">
-              {currentPage === "settings" ? (
-                <motion.div
-                  key="settings"
-                  className="game-panel"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <SettingsPanel
-                    javaPath={javaPath}
-                    javaVersion={javaVersion}
-                    maxMemory={maxMemory}
-                    jvmArgs={jvmArgs}
-                    gpuMode={gpuMode}
-                    theme={theme}
-                    avatarUrl={avatarUrl}
-                    username={account.username}
-                    onJavaChange={handleJavaChange}
-                    onMemoryChange={handleMemoryChange}
-                    onJvmArgsChange={handleJvmArgsChange}
-                    onGpuModeChange={handleGpuModeChange}
-                    onThemeChange={setTheme}
-                    onAvatarChange={setAvatarUrl}
-                  />
-                </motion.div>
-              ) : currentPage === "custom" ? (
-                <CustomModpackPanel key="custom" />
-              ) : (
-                <GamePanel
-                  key={currentPage}
-                  page={currentPage}
-                  account={account}
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence mode="wait">
+            {currentPage === "settings" && account ? (
+              <motion.div
+                key="settings"
+                className="game-panel"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <SettingsPanel
                   javaPath={javaPath}
+                  javaVersion={javaVersion}
                   maxMemory={maxMemory}
                   jvmArgs={jvmArgs}
                   gpuMode={gpuMode}
+                  theme={theme}
+                  avatarUrl={avatarUrl}
+                  username={account.username}
+                  onJavaChange={handleJavaChange}
+                  onMemoryChange={handleMemoryChange}
+                  onJvmArgsChange={handleJvmArgsChange}
+                  onGpuModeChange={handleGpuModeChange}
+                  onThemeChange={setTheme}
+                  onAvatarChange={setAvatarUrl}
                 />
-              )}
-            </AnimatePresence>
-          )}
+              </motion.div>
+            ) : currentPage === "custom" ? (
+              <CustomModpackPanel key="custom" />
+            ) : currentPage !== "settings" ? (
+              <GamePanel
+                key={currentPage}
+                page={currentPage}
+                account={account}
+                javaPath={javaPath}
+                maxMemory={maxMemory}
+                jvmArgs={jvmArgs}
+                gpuMode={gpuMode}
+              />
+            ) : (
+              <GamePanel
+                key="fallback"
+                page="rpworld"
+                account={account}
+                javaPath={javaPath}
+                maxMemory={maxMemory}
+                jvmArgs={jvmArgs}
+                gpuMode={gpuMode}
+              />
+            )}
+          </AnimatePresence>
         </div>
       </div>
 

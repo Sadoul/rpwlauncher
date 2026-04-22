@@ -19,7 +19,7 @@ interface LaunchProgress {
 
 interface GamePanelProps {
   page: Page;
-  account: Account;
+  account: Account | null;
   javaPath: string;
   maxMemory: number;
   jvmArgs?: string;
@@ -120,6 +120,11 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
         setError(String(err));
         setStatus("ready");
       }
+      return;
+    }
+
+    if (!account) {
+      setError("Войдите в аккаунт перед запуском");
       return;
     }
 
