@@ -224,125 +224,120 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
         >
           {config.title}
         </motion.h2>
-        <motion.p
-          className="description"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+        <motion.div
+          className="description-glass-card"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.18, duration: 0.3 }}
         >
-          {config.description}
-        </motion.p>
+          <p className="description">{config.description}</p>
+        </motion.div>
       </div>
 
-      <div className="game-panel-content">
-        <div className="game-content-card">
-        <AnimatePresence mode="wait">
-          {launching ? (
-            <motion.div
-              key="launching"
-              className="progress-container"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.25 }}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, width: "100%" }}
-            >
-              {progress && (
-                <>
-                  <div className="progress-bar-wrapper" style={{ width: "100%", maxWidth: 440 }}>
-                    <motion.div
-                      className="progress-bar-fill"
-                      initial={{ width: "0%" }}
-                      animate={{ width: `${progressPercent}%` }}
-                      transition={{ duration: 0.3 }}
-                    />
-                  </div>
-                  <div className="progress-text" style={{ color: bgImage ? "rgba(255,255,255,0.75)" : undefined }}>
-                    {progress.message}
-                  </div>
-                </>
-              )}
+      <div style={{ flex: 1 }} />
 
-              {/* Cancel button over play area */}
-              <motion.button
-                className="cancel-button"
-                onClick={handleCancel}
-                disabled={cancelling}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                style={bgImage ? { borderColor: "rgba(255,100,100,0.7)", color: "#ff6b6b", background: "rgba(0,0,0,0.25)" } : undefined}
+      <div className="game-play-area">
+        <div className="play-glass-wrapper">
+          <AnimatePresence mode="wait">
+            {launching ? (
+              <motion.div
+                key="launching"
+                className="progress-container"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.25 }}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, width: "100%" }}
               >
-                {cancelling ? "Отмена..." : "Отменить"}
-              </motion.button>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="play"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.3 }}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}
-            >
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  style={{
-                    color: "var(--accent-red)",
-                    fontSize: "12px",
-                    textAlign: "center",
-                    maxWidth: 380,
-                    padding: "10px 14px",
-                    background: "rgba(192, 57, 43, 0.1)",
-                    borderRadius: "8px",
-                    border: "1px solid rgba(192, 57, 43, 0.25)",
-                  }}
-                >
-                  {error}
-                </motion.div>
-              )}
-
-              {!config.locked && (
+                {progress && (
+                  <>
+                    <div className="progress-bar-wrapper" style={{ width: "100%" }}>
+                      <motion.div
+                        className="progress-bar-fill"
+                        initial={{ width: "0%" }}
+                        animate={{ width: `${progressPercent}%` }}
+                        transition={{ duration: 0.3 }}
+                      />
+                    </div>
+                    <div className="progress-text">
+                      {progress.message}
+                    </div>
+                  </>
+                )}
                 <motion.button
-                  className="play-button"
-                  onClick={handlePlay}
-                  disabled={launching || !javaPath || checkingUpdate || config.locked}
-                  whileHover={{ scale: 1.04 }}
+                  className="cancel-button"
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                  whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
-                  style={bgImage ? { backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)" } : undefined}
                 >
-                  {checkingUpdate ? "Проверка..."
-                    : status === "update" ? "Обновить"
-                    : status === "downloading" ? "Скачивание..."
-                    : "Играть"}
+                  {cancelling ? "Отмена..." : "Отменить"}
                 </motion.button>
-              )}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="play"
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.92 }}
+                transition={{ duration: 0.3 }}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, width: "100%" }}
+              >
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    style={{
+                      color: "var(--accent-red)",
+                      fontSize: "12px",
+                      textAlign: "center",
+                      width: "100%",
+                      padding: "10px 14px",
+                      background: "rgba(192, 57, 43, 0.12)",
+                      borderRadius: "10px",
+                      border: "1px solid rgba(192, 57, 43, 0.28)",
+                    }}
+                  >
+                    {error}
+                  </motion.div>
+                )}
 
-              {!javaPath && !config.locked && (
-                <div style={{ fontSize: "12px", color: bgImage ? "rgba(255,200,120,0.9)" : "var(--accent-orange)" }}>
-                  Java не найдена. Настройте Java в настройках.
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-        </div>{/* end game-content-card */}
+                {!config.locked && (
+                  <motion.button
+                    className="play-button-hero"
+                    onClick={handlePlay}
+                    disabled={launching || !javaPath || checkingUpdate || config.locked}
+                    whileHover={{ scale: 1.03, y: -2 }}
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    <span className="play-button-icon">▶</span>
+                    <span>
+                      {checkingUpdate ? "Проверка..."
+                        : status === "update" ? "Обновить"
+                        : status === "downloading" ? "Скачивание..."
+                        : "Играть"}
+                    </span>
+                  </motion.button>
+                )}
+
+                {!javaPath && !config.locked && (
+                  <div className="java-warning">
+                    Java не найдена. Настройте Java в настройках.
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       <div className="game-panel-footer">
-        <div className="modpack-info">
-          <span style={{ fontSize: "13px", fontWeight: 600, color: bgImage ? "#fff" : undefined }}>
-            {config.title}
-          </span>
-          <span className="mc-version" style={{ color: bgImage ? "rgba(255,255,255,0.6)" : undefined }}>
-            Minecraft {config.mcVersion} · Forge
-          </span>
+        <div className="footer-glass-card">
+          <span className="footer-modpack-name">{config.title}</span>
+          <span className="footer-mc-version">Minecraft {config.mcVersion} · Forge</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span className={`status-badge ${status === "ready" ? "ready" : status === "update" ? "update" : "downloading"}`}
-            style={bgImage ? { background: "rgba(0,0,0,0.3)", backdropFilter: "blur(8px)" } : undefined}
-          >
+          <span className={`status-badge ${status === "ready" ? "ready" : status === "update" ? "update" : "downloading"}`}>
             <span className="status-dot" />
             {status === "ready" ? "Готово" : status === "update" ? "Обновление" : "Загрузка"}
           </span>

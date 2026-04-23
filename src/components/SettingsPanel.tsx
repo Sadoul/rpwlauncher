@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import { motion, AnimatePresence } from "framer-motion";
@@ -63,7 +63,6 @@ export default function SettingsPanel({
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [toast, setToast] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -119,25 +118,25 @@ export default function SettingsPanel({
   };
 
   // Avatar
-  const handleAvatarClick = () => fileInputRef.current?.click();
-
-  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setAvatarLoading(true);
+  const handleAvatarClick = async () => {
     try {
-      const nativePath = (file as File & { path?: string }).path;
-      const url = await invoke<string>("save_avatar", { sourcePath: nativePath || file.name });
-      onAvatarChange(url);
-      showToast("Аватарка обновлена");
-    } catch {
-      const objUrl = URL.createObjectURL(file);
-      onAvatarChange(objUrl);
-      showToast("Аватарка обновлена");
-    } finally {
-      setAvatarLoading(false);
-      e.target.value = "";
-    }
+      const selected = await dialogOpen({
+        filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
+        title: "Выберите аватарку",
+      });
+      if (typeof selected === "string") {
+        setAvatarLoading(true);
+        try {
+          const url = await invoke<string>("save_avatar", { sourcePath: selected });
+          onAvatarChange(url);
+          showToast("Аватарка обновлена");
+        } catch (e) {
+          showToast("Ошибка: " + String(e));
+        } finally {
+          setAvatarLoading(false);
+        }
+      }
+    } catch { /* dialog cancelled */ }
   };
 
   // Launcher update
@@ -223,13 +222,6 @@ export default function SettingsPanel({
               </svg>
             </div>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            style={{ display: "none" }}
-            onChange={handleAvatarFile}
-          />
           <div>
             <div style={{ fontWeight: 600, fontSize: 15 }}>{username}</div>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>

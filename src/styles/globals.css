@@ -99,7 +99,7 @@ html, body, #root,
 .app-container, .sidebar, .titlebar,
 .nav-item, .sidebar-account, .sidebar-icon-btn,
 .settings-panel, .settings-section,
-.game-panel, .game-content-card,
+.game-panel, .play-glass-wrapper, .description-glass-card, .footer-glass-card,
 .input-group input, .jvm-args-input,
 .auth-container, .notification {
   transition:
@@ -386,6 +386,47 @@ button { font-family: inherit; }
 /* ══════════════════════════════════════════════════════════════
    PLAY BUTTON + LAUNCH AREA
    ══════════════════════════════════════════════════════════════ */
+
+/* Hero play button */
+.play-button-hero {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; max-width: 360px;
+  padding: 17px 32px;
+  font-size: 16px; font-weight: 800;
+  letter-spacing: 0.9px; text-transform: uppercase;
+  color: var(--text-on-accent);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  border: none; border-radius: 16px;
+  cursor: pointer; font-family: inherit;
+  position: relative; overflow: hidden;
+  box-shadow:
+    0 6px 28px var(--accent-glow-strong),
+    0 0 0 1px rgba(255,255,255,0.18) inset,
+    0 1px 0 rgba(255,255,255,0.22) inset;
+  transition: box-shadow var(--ease), filter var(--ease), opacity var(--ease);
+}
+.play-button-hero::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 50%; border-radius: 16px 16px 0 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.16) 0%, transparent 100%);
+  pointer-events: none;
+}
+.play-button-hero:hover:not(:disabled) {
+  filter: brightness(1.1);
+  box-shadow:
+    0 10px 40px var(--accent-glow-strong),
+    0 0 0 1px rgba(255,255,255,0.22) inset,
+    0 1px 0 rgba(255,255,255,0.26) inset;
+}
+.play-button-hero:disabled { opacity: 0.46; cursor: not-allowed; }
+
+.play-button-icon {
+  font-size: 13px; line-height: 1;
+  filter: drop-shadow(0 0 4px rgba(255,255,255,0.4));
+}
+
+/* Legacy play-button kept for backward compat */
 .play-button {
   padding: 13px 32px;
   font-size: 15px; font-weight: 700;
@@ -398,19 +439,34 @@ button { font-family: inherit; }
 }
 .play-button:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 6px 24px var(--accent-glow-strong); }
 .play-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; filter: none; }
-
 [data-theme="dark"] .play-button { color: var(--text-on-accent); }
 
 .cancel-button {
-  padding: 13px 32px;
-  font-size: 15px; font-weight: 700;
+  padding: 11px 28px;
+  font-size: 14px; font-weight: 600;
   color: var(--accent-red);
   background: rgba(255,61,61,0.08);
   border: 1px solid rgba(255,61,61,0.3);
   border-radius: var(--r-sm); cursor: pointer;
-  transition: all var(--ease);
+  transition: all var(--ease); font-family: inherit;
 }
 .cancel-button:hover { background: rgba(255,61,61,0.18); border-color: var(--accent-red); }
+
+/* Java warning text */
+.java-warning {
+  font-size: 12px; text-align: center;
+  color: var(--accent-2);
+  padding: 6px 12px;
+  background: rgba(232,149,90,0.1);
+  border: 1px solid rgba(232,149,90,0.2);
+  border-radius: var(--r-sm);
+  width: 100%;
+}
+[data-theme="dark"] .java-warning {
+  color: #ffcc80;
+  background: rgba(255,200,120,0.08);
+  border-color: rgba(255,200,120,0.18);
+}
 
 /* Progress bar */
 .progress-bar-wrapper {
@@ -1122,57 +1178,108 @@ button { font-family: inherit; }
 .game-panel-header h2 {
   font-size: 28px; font-weight: 800;
   color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.55);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
-.game-panel-header .description {
-  font-size: 13px; color: rgba(255,255,255,0.72);
-  line-height: 1.55; max-width: 480px;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
-}
-/* No-bg fallback */
+/* No-bg fallback for h2 */
 .game-panel:not(.has-bg) .game-panel-header h2 { color: var(--text); text-shadow: none; }
-.game-panel:not(.has-bg) .game-panel-header .description { color: var(--text-2); text-shadow: none; }
 
-.game-panel-content {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  padding: 16px 32px;
-  position: relative; z-index: 1;
-}
-
-/* Glass card wrapping the play/progress area — matches the rest of the UI */
-.game-content-card {
-  background: var(--bg-glass-solid);
-  backdrop-filter: blur(var(--blur-heavy));
-  -webkit-backdrop-filter: blur(var(--blur-heavy));
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-lg);
-  padding: 24px 32px;
-  display: flex; flex-direction: column; align-items: center;
-  gap: 16px; min-width: 320px;
-}
-/* On bg-image panels, let the card be slightly less opaque so the image shows through */
-.game-panel.has-bg .game-content-card {
+/* Description glass card */
+.description-glass-card {
+  display: inline-block; max-width: 480px;
   background: rgba(0,0,0,0.42);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-color: rgba(255,255,255,0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 11px 16px;
+}
+.game-panel:not(.has-bg) .description-glass-card {
+  background: var(--bg-glass-solid);
+  border-color: var(--border);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+}
+[data-theme="dark"] .game-panel:not(.has-bg) .description-glass-card {
+  background: var(--bg-glass-solid);
+  border-color: var(--border);
+}
+.description-glass-card .description {
+  font-size: 13px; color: rgba(255,255,255,0.82);
+  line-height: 1.55; margin: 0;
+}
+.game-panel:not(.has-bg) .description-glass-card .description {
+  color: var(--text-2);
+}
+
+/* Play area — sits at bottom above footer */
+.game-play-area {
+  padding: 16px 32px 20px;
+  position: relative; z-index: 1;
+  display: flex; justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Glass wrapper around the play button / progress */
+.play-glass-wrapper {
+  background: rgba(0,0,0,0.48);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 20px;
+  padding: 22px 28px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; width: 100%; max-width: 440px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.04) inset;
+}
+.game-panel:not(.has-bg) .play-glass-wrapper {
+  background: var(--bg-glass-solid);
+  border-color: var(--border);
+  box-shadow: var(--shadow-md);
+}
+[data-theme="dark"] .game-panel:not(.has-bg) .play-glass-wrapper {
+  background: var(--bg-glass-solid);
+  border-color: var(--border);
 }
 
 .game-panel-footer {
-  padding: 14px 32px;
+  padding: 12px 24px;
   display: flex; align-items: center; justify-content: space-between;
   position: relative; z-index: 1;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid rgba(255,255,255,0.08);
   flex-shrink: 0;
 }
 .game-panel:not(.has-bg) .game-panel-footer { border-color: var(--border); }
 
-.modpack-info { display: flex; flex-direction: column; gap: 3px; }
-.modpack-info .mc-version { font-size: 11px; color: rgba(255,255,255,0.55); }
-.game-panel:not(.has-bg) .modpack-info .mc-version { color: var(--text-muted); }
+/* Footer glass card for modpack info */
+.footer-glass-card {
+  display: flex; flex-direction: column; gap: 2px;
+  background: rgba(0,0,0,0.44);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.11);
+  border-radius: 10px;
+  padding: 8px 14px;
+}
+.game-panel:not(.has-bg) .footer-glass-card {
+  background: var(--bg-glass-solid);
+  border-color: var(--border);
+}
+[data-theme="dark"] .game-panel:not(.has-bg) .footer-glass-card {
+  background: var(--bg-glass-solid);
+  border-color: var(--border);
+}
+.footer-modpack-name {
+  font-size: 13px; font-weight: 600;
+  color: #fff;
+}
+.game-panel:not(.has-bg) .footer-modpack-name { color: var(--text); }
+.footer-mc-version {
+  font-size: 11px;
+  color: rgba(255,255,255,0.58);
+}
+.game-panel:not(.has-bg) .footer-mc-version { color: var(--text-muted); }
 
-.progress-text { font-size: 12px; color: rgba(255,255,255,0.65); text-align: center; }
+.progress-text { font-size: 12px; color: rgba(255,255,255,0.72); text-align: center; }
 .game-panel:not(.has-bg) .progress-text { color: var(--text-muted); }
 
 /* Locked overlay */
