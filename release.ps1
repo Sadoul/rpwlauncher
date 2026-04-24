@@ -33,10 +33,17 @@ if ($LASTEXITCODE -ne 0) { throw "Ошибка генерации иконок" 
 # ── 2. Сборка Tauri (NSIS installer) ─────────────────────────────────────────
 Write-Host ""
 Write-Host "[2/4] Сборка Tauri (NSIS installer)..." -ForegroundColor Green
-npm run tauri build -- --bundles nsis
+npx tauri build --bundles nsis
 if ($LASTEXITCODE -ne 0) { throw "Ошибка сборки Tauri" }
 
-$nsisFiles = Get-ChildItem "src-tauri\target\release\bundle\nsis\*.exe" -ErrorAction SilentlyContinue
+# Берём именно тот installer у которого в имени текущая версия
+$nsisFiles = Get-ChildItem "src-tauri\target\release\bundle\nsis\*.exe" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like "*$VERSION*" }
+if (-not $nsisFiles) {
+    # fallback — самый свежий файл
+    $nsisFiles = Get-ChildItem "src-tauri\target\release\bundle\nsis\*.exe" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending
+}
 if (-not $nsisFiles) { throw "NSIS exe не найден в src-tauri\target\release\bundle\nsis\" }
 Write-Host "  -> Installer: $($nsisFiles[0].Name)" -ForegroundColor DarkGray
 
