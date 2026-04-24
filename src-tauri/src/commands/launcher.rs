@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use super::logger::log;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+const INSTALLER_LOG_TAIL_LINES: usize = 80;
+
 static LAUNCH_PROGRESS: Mutex<Option<LaunchProgress>> = Mutex::new(None);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -338,6 +342,23 @@ async fn get_latest_forge_version(
     Ok(chosen)
 }
 
+fn log_process_output(prefix: &str, output: &str) {
+    if output.trim().is_empty() {
+        log(&format!("[{}] <empty>", prefix));
+        return;
+    }
+
+    for line in output.lines() {
+        log(&format!("[{}] {}", prefix, line));
+    }
+}
+
+fn tail_lines(output: &str, max_lines: usize) -> String {
+    let mut lines = output.lines().rev().take(max_lines).collect::<Vec<_>>();
+    lines.reverse();
+    lines.join("\n")
+}
+
 /// Run Forge or NeoForge installer and return the installed version ID
 async fn run_modded_installer(
     client: &reqwest::Client,
@@ -355,19 +376,43 @@ async fn run_modded_installer(
     set_progress(loader, 1.0, 4.0, &format!("Скачивание {} installer...", loader));
     log(&format!("[{}] Installer URL: {}", loader, installer_url));
     download_file(client, installer_url, &installer_path).await?;
-    log(&format!("[{}] Installer downloaded to: {}", loader, installer_path.display()));
 
-    set_progress(loader, 2.0, 4.0, &format!("Запуск {} installer (может занять несколько минут)...", loader));
-    log(&format!("[{}] Running: {} -jar {} --installClient in {}", loader, java_path, installer_path.display(), mc_dir.display()));
+    let installer_size = fs::metadata(&installer_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or_default();
+    log(&format!(
+        "[{}] Installer downloaded to: {} ({} bytes)",
+        loader,
+        installer_path.display(),
+        installer_size
+    ));
 
-    let output = tokio::process::Command::new(java_path)
+    set_progress(loader, 2.0, 4.0, &format!("Запуск {} installer в фоне...", loader));
+    log(&format!(
+        "[{}] Running hidden: {} -Djava.awt.headless=true -jar {} --installClient in {}",
+        loader,
+        java_path,
+        installer_path.display(),
+        mc_dir.display()
+    ));
+
+    let mut installer_cmd = tokio::process::Command::new(java_path);
+    installer_cmd
         .args([
             "-Djava.awt.headless=true",
             "-jar",
             installer_path.to_str().unwrap_or_default(),
             "--installClient",
         ])
-        .current_dir(mc_dir)
+        .current_dir(mc_dir);
+
+    #[cfg(windows)]
+    {
+        use tokio::os::windows::process::CommandExt;
+        installer_cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = installer_cmd
         .output()
         .await
         .map_err(|e| format!("[{}] Failed to spawn installer: {}", loader, e))?;
@@ -375,25 +420,27 @@ async fn run_modded_installer(
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    if !stdout.trim().is_empty() {
-        for line in stdout.lines() {
-            log(&format!("[{}-installer stdout] {}", loader, line));
-        }
-    }
-    if !stderr.trim().is_empty() {
-        for line in stderr.lines() {
-            log(&format!("[{}-installer stderr] {}", loader, line));
-        }
-    }
+    log_process_output(&format!("{}-installer stdout", loader), &stdout);
+    log_process_output(&format!("{}-installer stderr", loader), &stderr);
 
     let _ = fs::remove_file(&installer_path);
 
     if !output.status.success() {
         let code = output.status.code().unwrap_or(-1);
-        return Err(format!(
-            "[{}] Installer exited with code {}. Check logs for details.",
-            loader, code
-        ));
+        let stdout_tail = tail_lines(&stdout, INSTALLER_LOG_TAIL_LINES);
+        let stderr_tail = tail_lines(&stderr, INSTALLER_LOG_TAIL_LINES);
+        let msg = format!(
+            "[{}] Installer exited with code {}. Java: {}. Game dir: {}. Installer URL: {}. Last stdout:\n{}\nLast stderr:\n{}",
+            loader,
+            code,
+            java_path,
+            mc_dir.display(),
+            installer_url,
+            stdout_tail,
+            stderr_tail
+        );
+        log(&msg);
+        return Err(msg);
     }
 
     log(&format!("[{}] Installer completed successfully (exit 0)", loader));
@@ -954,6 +1001,12 @@ pub async fn launch_game(
 
     let mut cmd = Command::new(&java_path);
     cmd.args(&args).current_dir(&mc_dir);
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
 
     if gpu == "discrete" {
         cmd.env("__NV_PRIME_RENDER_OFFLOAD", "1");
