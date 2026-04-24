@@ -407,10 +407,7 @@ async fn run_modded_installer(
         .current_dir(mc_dir);
 
     #[cfg(windows)]
-    {
-        use tokio::os::windows::process::CommandExt;
-        installer_cmd.creation_flags(CREATE_NO_WINDOW);
-    }
+    installer_cmd.creation_flags(CREATE_NO_WINDOW);
 
     let output = installer_cmd
         .output()
