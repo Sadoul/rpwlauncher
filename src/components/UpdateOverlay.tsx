@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { motion, AnimatePresence } from "framer-motion";
@@ -23,7 +23,7 @@ interface UpdateProgress {
 
 interface UpdateOverlayProps {
   updateInfo: UpdateInfo;
-  onSkip: () => void; // kept for type compat but NOT used — update is mandatory
+  onSkip: () => void;
 }
 
 function formatSize(bytes: number): string {
@@ -52,7 +52,6 @@ export default function UpdateOverlay({ updateInfo }: UpdateOverlayProps) {
     return () => { if (unlistenRef.current) unlistenRef.current(); };
   }, []);
 
-  // Auto-start update
   useEffect(() => {
     handleUpdate();
   }, []);
@@ -85,35 +84,35 @@ export default function UpdateOverlay({ updateInfo }: UpdateOverlayProps) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.35 }}
     >
-      {/* Animated bg orbs using theme accent colors */}
+      {/* ambient orbs */}
       <div className="update-orbs">
         {[0, 1, 2].map((i) => (
           <motion.div
             key={i}
             className={`update-orb update-orb-${i}`}
-            animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.9, 0.5] }}
-            transition={{ duration: 4 + i * 1.5, repeat: Infinity, delay: i * 0.8 }}
+            animate={{ scale: [1, 1.18, 1], opacity: [0.6, 1, 0.6] }}
+            transition={{ duration: 5 + i * 1.8, repeat: Infinity, delay: i * 1.1 }}
           />
         ))}
       </div>
 
       <motion.div
         className="update-content"
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15, duration: 0.45, ease: "easeOut" }}
+        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ delay: 0.12, duration: 0.4, ease: "easeOut" }}
       >
-        {/* Launcher icon with pulse rings */}
+        {/* Icon */}
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <motion.div
             className="update-ring update-ring-outer"
-            animate={{ scale: [1, 1.25, 1], opacity: [0.4, 0, 0.4] }}
-            transition={{ duration: 2.2, repeat: Infinity }}
+            animate={{ scale: [1, 1.22, 1], opacity: [0.5, 0, 0.5] }}
+            transition={{ duration: 2.4, repeat: Infinity }}
           />
           <motion.div
             className="update-ring update-ring-inner"
-            animate={{ scale: [1, 1.14, 1], opacity: [0.6, 0, 0.6] }}
-            transition={{ duration: 2.2, repeat: Infinity, delay: 0.35 }}
+            animate={{ scale: [1, 1.14, 1], opacity: [0.7, 0, 0.7] }}
+            transition={{ duration: 2.4, repeat: Infinity, delay: 0.4 }}
           />
           <img
             src="/icons/launcher.png"
@@ -126,23 +125,49 @@ export default function UpdateOverlay({ updateInfo }: UpdateOverlayProps) {
         <div className="update-title-block">
           <motion.div
             className="update-title"
-            animate={isApplying ? { opacity: [1, 0.55, 1] } : {}}
+            animate={isApplying ? { opacity: [1, 0.5, 1] } : {}}
             transition={{ duration: 1.5, repeat: Infinity }}
           >
             {isDone
               ? "✓ Обновление применено!"
               : isApplying
               ? "Применение обновления..."
-              : `Доступно обновление v${updateInfo.latest_version}`}
+              : "Доступно обновление"}
           </motion.div>
-          <div className="update-subtitle">
+
+          {!isDone && !isApplying && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8 }}>
+              <span style={{
+                padding: "3px 10px", fontSize: 11, fontWeight: 600,
+                background: "var(--bg-overlay)", border: "1px solid var(--border)",
+                borderRadius: 20, color: "var(--text-muted)"
+              }}>
+                v{updateInfo.current_version}
+              </span>
+              <span style={{ color: "var(--accent)", fontSize: 14 }}>→</span>
+              <span style={{
+                padding: "3px 10px", fontSize: 11, fontWeight: 600,
+                background: "var(--accent-glow)", border: "1px solid var(--border-hover)",
+                borderRadius: 20, color: "var(--accent)"
+              }}>
+                v{updateInfo.latest_version}
+              </span>
+            </div>
+          )}
+
+          <div className="update-subtitle" style={{ marginTop: 8 }}>
             {isDone
               ? "Лаунчер перезапустится автоматически"
               : isApplying
               ? "Пожалуйста, не закрывайте лаунчер"
-              : `v${updateInfo.current_version} → v${updateInfo.latest_version}${updateInfo.file_size ? ` · ${formatSize(updateInfo.file_size)}` : ""}`}
+              : updateInfo.file_size
+              ? `Размер: ${formatSize(updateInfo.file_size)}`
+              : "Загрузка обновления..."}
           </div>
         </div>
+
+        {/* Divider */}
+        <div style={{ width: "100%", height: 1, background: "var(--border)" }} />
 
         {/* Progress */}
         <div className="update-progress-block">
@@ -164,7 +189,7 @@ export default function UpdateOverlay({ updateInfo }: UpdateOverlayProps) {
           </div>
 
           <div className="update-progress-stats">
-            <span>{started ? (progress?.message || "Соединение...") : "Загрузка обновления..."}</span>
+            <span>{started ? (progress?.message || "Соединение...") : "Подготовка..."}</span>
             {isDownloading && progress && (
               <span style={{ display: "flex", gap: 10 }}>
                 <span className="update-percent">{percent}%</span>
