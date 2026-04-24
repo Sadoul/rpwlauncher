@@ -1,9 +1,10 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
+
+use serde::{Deserialize, Serialize};
 
 use super::logger::log;
 
@@ -74,10 +75,10 @@ struct AssetIndex {
 
 #[derive(Debug, Deserialize)]
 struct Library {
-    #[allow(dead_code)]
     name: String,
     downloads: Option<LibraryDownloads>,
     rules: Option<Vec<Rule>>,
+    #[allow(dead_code)]
     url: Option<String>,
 }
 
@@ -140,20 +141,32 @@ fn set_progress(stage: &str, progress: f64, total: f64, message: &str) {
 
 async fn download_file(client: &reqwest::Client, url: &str, path: &PathBuf) -> Result<(), String> {
     if path.exists() {
+        log(&format!("[download] Already exists, skipping: {}", path.display()));
         return Ok(());
     }
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        fs::create_dir_all(parent).map_err(|e| format!("mkdir failed for {}: {}", parent.display(), e))?;
     }
 
-    log(&format!("Downloading: {}", url));
-    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    log(&format!("[download] Fetching: {}", url));
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("[download] Request failed for {}: {}", url, e))?;
+
     if !response.status().is_success() {
-        return Err(format!("HTTP {} for {}", response.status(), url));
+        return Err(format!("[download] HTTP {} for URL: {}", response.status(), url));
     }
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
-    fs::write(path, &bytes).map_err(|e| e.to_string())?;
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("[download] Read body failed for {}: {}", url, e))?;
+
+    log(&format!("[download] Saving {} bytes to {}", bytes.len(), path.display()));
+    fs::write(path, &bytes).map_err(|e| format!("[download] Write failed for {}: {}", path.display(), e))?;
 
     Ok(())
 }
@@ -175,57 +188,30 @@ fn is_library_allowed(lib: &Library) -> bool {
     true
 }
 
-/// Detect if version string refers to Forge and return (mc_version, "forge")
-fn parse_forge_version(version: &str) -> Option<String> {
-    // Patterns: "forge-1.20.1", "1.20.1-forge", "1.20.1-forge-47.x.x"
+/// Returns (mc_version, loader_type) or None for vanilla
+fn parse_modded_version(version: &str) -> Option<(String, String)> {
     if version.starts_with("forge-") {
-        return Some(version.trim_start_matches("forge-").to_string());
+        let mc = version.trim_start_matches("forge-").to_string();
+        return Some((mc, "forge".to_string()));
     }
     if version.contains("-forge") {
-        let mc = version.split("-forge").next()?.to_string();
-        return Some(mc);
+        if let Some(mc) = version.split("-forge").next() {
+            return Some((mc.to_string(), "forge".to_string()));
+        }
+    }
+    if version.starts_with("fabric-") {
+        let mc = version.trim_start_matches("fabric-").to_string();
+        return Some((mc, "fabric".to_string()));
+    }
+    if version.starts_with("neoforge-") {
+        let rest = version.trim_start_matches("neoforge-").to_string();
+        return Some((rest, "neoforge".to_string()));
     }
     None
 }
 
-/// Find the latest Forge version for a given MC version from maven metadata
-async fn get_latest_forge_version(client: &reqwest::Client, mc_version: &str) -> Result<String, String> {
-    let url = "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml";
-    log(&format!("Fetching Forge maven metadata from {}", url));
-    let xml = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .text()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Parse versions manually — find all versions that start with mc_version-
-    let prefix = format!("{}-", mc_version);
-    let mut matching: Vec<String> = Vec::new();
-
-    for line in xml.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("<version>") && trimmed.ends_with("</version>") {
-            let v = trimmed
-                .trim_start_matches("<version>")
-                .trim_end_matches("</version>")
-                .to_string();
-            if v.starts_with(&prefix) {
-                matching.push(v);
-            }
-        }
-    }
-
-    matching
-        .into_iter()
-        .last()
-        .ok_or_else(|| format!("No Forge version found for MC {}", mc_version))
-}
-
-/// Check if Forge is already installed and return its version ID
-fn find_installed_forge(mc_dir: &PathBuf, mc_version: &str) -> Option<String> {
+/// Find an already-installed Forge/NeoForge version
+fn find_installed_forge(mc_dir: &PathBuf, mc_version: &str, loader: &str) -> Option<String> {
     let versions_dir = mc_dir.join("versions");
     if !versions_dir.exists() {
         return None;
@@ -233,10 +219,14 @@ fn find_installed_forge(mc_dir: &PathBuf, mc_version: &str) -> Option<String> {
     if let Ok(entries) = fs::read_dir(&versions_dir) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if name.contains("forge") && name.contains(mc_version) {
+            let matches = match loader {
+                "neoforge" => name.contains("neoforge"),
+                _ => name.contains("forge") && !name.contains("neoforge"),
+            };
+            if matches && name.contains(mc_version) {
                 let json = entry.path().join(format!("{}.json", name));
                 if json.exists() {
-                    log(&format!("Found existing Forge install: {}", name));
+                    log(&format!("[{}] Found existing install: {}", loader, name));
                     return Some(name);
                 }
             }
@@ -245,7 +235,7 @@ fn find_installed_forge(mc_dir: &PathBuf, mc_version: &str) -> Option<String> {
     None
 }
 
-/// Ensure vanilla MC is installed (version JSON + client jar)
+/// Ensure vanilla MC JSON + client.jar are present
 async fn ensure_vanilla(
     client: &reqwest::Client,
     mc_dir: &PathBuf,
@@ -255,75 +245,122 @@ async fn ensure_vanilla(
     let version_json_path = version_dir.join(format!("{}.json", mc_version));
 
     if version_json_path.exists() {
-        log(&format!("Vanilla {} already installed", mc_version));
-        return Ok(());
+        log(&format!("[vanilla] {} JSON already present", mc_version));
+    } else {
+        set_progress("vanilla", 0.0, 2.0, &format!("Загрузка манифеста Minecraft {}...", mc_version));
+        let manifest_url = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+        log(&format!("[vanilla] Fetching version manifest: {}", manifest_url));
+
+        let manifest: VersionManifest = client
+            .get(manifest_url)
+            .send()
+            .await
+            .map_err(|e| format!("[vanilla] Manifest request failed: {}", e))?
+            .json()
+            .await
+            .map_err(|e| format!("[vanilla] Manifest parse failed: {}", e))?;
+
+        let entry = manifest
+            .versions
+            .iter()
+            .find(|v| v.id == mc_version)
+            .ok_or_else(|| format!("[vanilla] Version {} not found in manifest", mc_version))?;
+
+        set_progress("vanilla", 1.0, 2.0, &format!("Скачивание Minecraft {} JSON...", mc_version));
+        download_file(client, &entry.url, &version_json_path).await?;
+        log(&format!("[vanilla] Downloaded version JSON for {}", mc_version));
     }
 
-    set_progress("vanilla", 0.0, 1.0, &format!("Загрузка манифеста версий Minecraft..."));
-    let manifest_url = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
-    let manifest: VersionManifest = client
-        .get(manifest_url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let entry = manifest
-        .versions
-        .iter()
-        .find(|v| v.id == mc_version)
-        .ok_or_else(|| format!("Vanilla {} not found in manifest", mc_version))?;
-
-    set_progress("vanilla", 0.5, 1.0, &format!("Скачивание Minecraft {}...", mc_version));
-    download_file(client, &entry.url, &version_json_path).await?;
-
-    // Also download client jar so Forge installer can merge it
     let version_info: VersionInfo = serde_json::from_str(
-        &fs::read_to_string(&version_json_path).map_err(|e| e.to_string())?,
+        &fs::read_to_string(&version_json_path)
+            .map_err(|e| format!("[vanilla] Cannot read version JSON: {}", e))?,
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format!("[vanilla] Cannot parse version JSON: {}", e))?;
 
     let client_jar = version_dir.join(format!("{}.jar", mc_version));
-    if let Some(dl) = &version_info.downloads {
+    if client_jar.exists() {
+        log(&format!("[vanilla] client.jar already present for {}", mc_version));
+    } else if let Some(dl) = &version_info.downloads {
         if let Some(c) = &dl.client {
+            set_progress("vanilla", 2.0, 2.0, &format!("Скачивание client.jar для {}...", mc_version));
+            log(&format!("[vanilla] Downloading client.jar from: {}", c.url));
             download_file(client, &c.url, &client_jar).await?;
+            log(&format!("[vanilla] client.jar downloaded for {}", mc_version));
         }
+    } else {
+        log(&format!("[vanilla] WARNING: No client download entry in JSON for {}", mc_version));
     }
 
-    log(&format!("Vanilla {} installed", mc_version));
+    log(&format!("[vanilla] {} ready", mc_version));
     Ok(())
 }
 
-/// Download and run Forge installer, return the installed forge version ID
-async fn install_forge(
+/// Get latest Forge version string for a given MC version
+async fn get_latest_forge_version(
+    client: &reqwest::Client,
+    mc_version: &str,
+) -> Result<String, String> {
+    let url = "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml";
+    log(&format!("[forge] Fetching maven metadata: {}", url));
+
+    let xml = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("[forge] Maven metadata request failed: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("[forge] Maven metadata read failed: {}", e))?;
+
+    let prefix = format!("{}-", mc_version);
+    let mut matching: Vec<String> = Vec::new();
+
+    for line in xml.lines() {
+        let t = line.trim();
+        if t.starts_with("<version>") && t.ends_with("</version>") {
+            let v = t
+                .trim_start_matches("<version>")
+                .trim_end_matches("</version>")
+                .to_string();
+            if v.starts_with(&prefix) {
+                matching.push(v);
+            }
+        }
+    }
+
+    log(&format!("[forge] Found {} matching versions for MC {}", matching.len(), mc_version));
+    let chosen = matching
+        .into_iter()
+        .last()
+        .ok_or_else(|| format!("[forge] No Forge version found for MC {}", mc_version))?;
+
+    log(&format!("[forge] Selected version: {}", chosen));
+    Ok(chosen)
+}
+
+/// Run Forge or NeoForge installer and return the installed version ID
+async fn run_modded_installer(
     client: &reqwest::Client,
     java_path: &str,
     mc_dir: &PathBuf,
+    installer_url: &str,
+    loader: &str,
     mc_version: &str,
 ) -> Result<String, String> {
-    // Get latest forge version
-    set_progress("forge", 0.0, 4.0, "Поиск версии Forge...");
-    let forge_ver = get_latest_forge_version(client, mc_version).await?;
-    log(&format!("Installing Forge {}", forge_ver));
+    let installer_path = mc_dir.join(format!("{}-installer.jar", loader));
+    if installer_path.exists() {
+        let _ = fs::remove_file(&installer_path);
+    }
 
-    // Download installer
-    set_progress("forge", 1.0, 4.0, &format!("Скачивание Forge {}...", forge_ver));
-    let installer_url = format!(
-        "https://maven.minecraftforge.net/net/minecraftforge/forge/{}/forge-{}-installer.jar",
-        forge_ver, forge_ver
-    );
-    let installer_path = mc_dir.join("forge-installer.jar");
-    // Force re-download of installer
-    if installer_path.exists() { let _ = fs::remove_file(&installer_path); }
-    download_file(client, &installer_url, &installer_path).await?;
+    set_progress(loader, 1.0, 4.0, &format!("Скачивание {} installer...", loader));
+    log(&format!("[{}] Installer URL: {}", loader, installer_url));
+    download_file(client, installer_url, &installer_path).await?;
+    log(&format!("[{}] Installer downloaded to: {}", loader, installer_path.display()));
 
-    // Run installer headlessly
-    set_progress("forge", 2.0, 4.0, "Установка Forge (это займёт несколько минут)...");
-    log(&format!("Running Forge installer: {} -Djava.awt.headless=true -jar {}", java_path, installer_path.display()));
+    set_progress(loader, 2.0, 4.0, &format!("Запуск {} installer (может занять несколько минут)...", loader));
+    log(&format!("[{}] Running: {} -jar {} --installClient in {}", loader, java_path, installer_path.display(), mc_dir.display()));
 
-    let status = tokio::process::Command::new(java_path)
+    let output = tokio::process::Command::new(java_path)
         .args([
             "-Djava.awt.headless=true",
             "-jar",
@@ -331,52 +368,208 @@ async fn install_forge(
             "--installClient",
         ])
         .current_dir(mc_dir)
-        .status()
+        .output()
         .await
-        .map_err(|e| format!("Не удалось запустить Forge installer: {}", e))?;
+        .map_err(|e| format!("[{}] Failed to spawn installer: {}", loader, e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if !stdout.trim().is_empty() {
+        for line in stdout.lines() {
+            log(&format!("[{}-installer stdout] {}", loader, line));
+        }
+    }
+    if !stderr.trim().is_empty() {
+        for line in stderr.lines() {
+            log(&format!("[{}-installer stderr] {}", loader, line));
+        }
+    }
 
     let _ = fs::remove_file(&installer_path);
 
-    if !status.success() {
-        return Err(format!("Forge installer завершился с ошибкой (код {})", status));
+    if !output.status.success() {
+        let code = output.status.code().unwrap_or(-1);
+        return Err(format!(
+            "[{}] Installer exited with code {}. Check logs for details.",
+            loader, code
+        ));
     }
 
-    // Find installed forge version
-    set_progress("forge", 3.0, 4.0, "Forge установлен, проверка...");
-    find_installed_forge(mc_dir, mc_version)
-        .ok_or_else(|| "Forge installer завершился, но версия не найдена".to_string())
+    log(&format!("[{}] Installer completed successfully (exit 0)", loader));
+
+    set_progress(loader, 3.0, 4.0, "Поиск установленной версии...");
+    let found = find_installed_forge(mc_dir, mc_version, loader)
+        .ok_or_else(|| format!("[{}] Installer succeeded but version not found in versions dir", loader))?;
+
+    log(&format!("[{}] Installed version: {}", loader, found));
+    Ok(found)
 }
 
-/// Download libraries from a version JSON (handles both vanilla and Forge style)
-async fn download_libraries(
+/// Install Forge for a given MC version
+async fn install_forge(
     client: &reqwest::Client,
+    java_path: &str,
     mc_dir: &PathBuf,
-    libraries: &[Library],
-    stage: &str,
-) -> Result<Vec<String>, String> {
-    let total = libraries.len() as f64;
-    let mut classpath: Vec<String> = Vec::new();
+    mc_version: &str,
+) -> Result<String, String> {
+    set_progress("forge", 0.0, 4.0, "Поиск последней версии Forge...");
+    let forge_ver = get_latest_forge_version(client, mc_version).await?;
+    log(&format!("[forge] Will install: {}", forge_ver));
 
-    for (i, lib) in libraries.iter().enumerate() {
-        if !is_library_allowed(lib) {
-            continue;
+    let installer_url = format!(
+        "https://maven.minecraftforge.net/net/minecraftforge/forge/{}/forge-{}-installer.jar",
+        forge_ver, forge_ver
+    );
+
+    run_modded_installer(client, java_path, mc_dir, &installer_url, "forge", mc_version).await
+}
+
+/// Install NeoForge for a given version string (e.g. "21.1.x" or mc version "1.21.1")
+async fn install_neoforge(
+    client: &reqwest::Client,
+    java_path: &str,
+    mc_dir: &PathBuf,
+    version_str: &str,
+) -> Result<String, String> {
+    set_progress("neoforge", 0.0, 4.0, "Поиск последней версии NeoForge...");
+
+    let neo_ver = get_latest_neoforge_version(client, version_str).await?;
+    log(&format!("[neoforge] Will install: {}", neo_ver));
+
+    let installer_url = format!(
+        "https://maven.neoforged.net/releases/net/neoforged/neoforge/{}/neoforge-{}-installer.jar",
+        neo_ver, neo_ver
+    );
+
+    let mc_version = version_str_to_mc(version_str);
+    run_modded_installer(client, java_path, mc_dir, &installer_url, "neoforge", &mc_version).await
+}
+
+fn version_str_to_mc(s: &str) -> String {
+    // NeoForge versions like "21.1.x" map to MC "1.21.1"
+    // If it already looks like "1.x.x" just return it
+    if s.starts_with("1.") {
+        return s.to_string();
+    }
+    // "21.1.x" → "1.21.1"
+    let parts: Vec<&str> = s.splitn(3, '.').collect();
+    if parts.len() >= 2 {
+        return format!("1.{}.{}", parts[0], parts[1]);
+    }
+    s.to_string()
+}
+
+async fn get_latest_neoforge_version(
+    client: &reqwest::Client,
+    version_str: &str,
+) -> Result<String, String> {
+    let url = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
+    log(&format!("[neoforge] Fetching maven metadata: {}", url));
+
+    let xml = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("[neoforge] Maven metadata request failed: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("[neoforge] Maven metadata read failed: {}", e))?;
+
+    // NeoForge versions look like "21.1.x" for MC 1.21.1
+    // The prefix to match depends on input
+    let prefix = if version_str.starts_with("1.") {
+        // Convert "1.21.1" → "21.1."
+        let parts: Vec<&str> = version_str.trim_start_matches("1.").splitn(2, '.').collect();
+        if parts.len() == 2 {
+            format!("{}.{}.", parts[0], parts[1])
+        } else {
+            format!("{}.", parts[0])
         }
+    } else {
+        format!("{}.", version_str)
+    };
 
-        if i % 10 == 0 {
-            set_progress(stage, i as f64, total,
-                &format!("Библиотеки ({}/{})", i + 1, total as u32));
-        }
+    log(&format!("[neoforge] Searching versions with prefix: {}", prefix));
+    let mut matching: Vec<String> = Vec::new();
 
-        if let Some(downloads) = &lib.downloads {
-            if let Some(artifact) = &downloads.artifact {
-                let lib_path = mc_dir.join("libraries").join(&artifact.path);
-                download_file(client, &artifact.url, &lib_path).await?;
-                classpath.push(lib_path.to_string_lossy().to_string());
+    for line in xml.lines() {
+        let t = line.trim();
+        if t.starts_with("<version>") && t.ends_with("</version>") {
+            let v = t
+                .trim_start_matches("<version>")
+                .trim_end_matches("</version>")
+                .to_string();
+            if v.starts_with(&prefix) {
+                matching.push(v);
             }
         }
     }
 
-    Ok(classpath)
+    log(&format!("[neoforge] Found {} matching versions", matching.len()));
+    matching
+        .into_iter()
+        .last()
+        .ok_or_else(|| format!("[neoforge] No NeoForge version found for {}", version_str))
+}
+
+/// Install Fabric loader for a given MC version via Fabric Meta API (no installer needed)
+async fn install_fabric(
+    client: &reqwest::Client,
+    mc_dir: &PathBuf,
+    mc_version: &str,
+) -> Result<String, String> {
+    set_progress("fabric", 0.0, 3.0, "Получение информации о Fabric loader...");
+
+    // Get stable loader versions
+    let loaders_url = "https://meta.fabricmc.net/v2/versions/loader";
+    log(&format!("[fabric] Fetching loader versions: {}", loaders_url));
+
+    let loaders: Vec<serde_json::Value> = client
+        .get(loaders_url)
+        .send()
+        .await
+        .map_err(|e| format!("[fabric] Loader list request failed: {}", e))?
+        .json()
+        .await
+        .map_err(|e| format!("[fabric] Loader list parse failed: {}", e))?;
+
+    let loader_version = loaders
+        .iter()
+        .find(|l| l["stable"].as_bool().unwrap_or(false))
+        .and_then(|l| l["version"].as_str())
+        .ok_or_else(|| "[fabric] No stable loader version found".to_string())?
+        .to_string();
+
+    log(&format!("[fabric] Latest stable loader: {}", loader_version));
+
+    let version_id = format!("fabric-loader-{}-{}", loader_version, mc_version);
+    let version_dir = mc_dir.join("versions").join(&version_id);
+    let profile_json_path = version_dir.join(format!("{}.json", version_id));
+
+    if profile_json_path.exists() {
+        log(&format!("[fabric] Already installed: {}", version_id));
+        return Ok(version_id);
+    }
+
+    set_progress("fabric", 1.0, 3.0, &format!("Скачивание Fabric profile для {}...", mc_version));
+    let profile_url = format!(
+        "https://meta.fabricmc.net/v2/versions/loader/{}/{}/profile/json",
+        mc_version, loader_version
+    );
+    log(&format!("[fabric] Profile URL: {}", profile_url));
+
+    fs::create_dir_all(&version_dir)
+        .map_err(|e| format!("[fabric] Cannot create version dir: {}", e))?;
+
+    download_file(client, &profile_url, &profile_json_path).await
+        .map_err(|e| format!("[fabric] Profile download failed: {}", e))?;
+
+    set_progress("fabric", 2.0, 3.0, "Установка vanilla для Fabric...");
+    ensure_vanilla(client, mc_dir, mc_version).await?;
+
+    log(&format!("[fabric] Fabric installed: {}", version_id));
+    Ok(version_id)
 }
 
 #[tauri::command]
@@ -392,8 +585,10 @@ pub async fn launch_game(
     gpu_mode: Option<String>,
 ) -> Result<String, String> {
     log(&format!("=== Launch requested: version={}, user={}", version, username));
+
     let client = reqwest::Client::builder()
-        .user_agent("RPWLauncher/2.7")
+        .user_agent("RPWLauncher/2.10")
+        .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -401,28 +596,51 @@ pub async fn launch_game(
         .map(PathBuf::from)
         .unwrap_or_else(get_minecraft_dir);
 
-    log(&format!("Game dir: {}", mc_dir.display()));
+    log(&format!("[launch] Game dir: {}", mc_dir.display()));
+    log(&format!("[launch] Java: {}", java_path));
+    log(&format!("[launch] Memory: {}M", max_memory));
 
-    // ── Detect Forge version ────────────────────────────────────────────────
-    let actual_version = if let Some(mc_version) = parse_forge_version(&version) {
-        log(&format!("Forge version detected, MC base: {}", mc_version));
+    fs::create_dir_all(&mc_dir)
+        .map_err(|e| format!("[launch] Cannot create game dir: {}", e))?;
 
-        // Check if already installed
-        let installed = find_installed_forge(&mc_dir, &mc_version);
+    // ── Detect loader type ──────────────────────────────────────────────────
+    let actual_version = if let Some((mc_ver, loader)) = parse_modded_version(&version) {
+        log(&format!("[launch] Detected loader: {} for MC {}", loader, mc_ver));
 
-        if let Some(forge_id) = installed {
-            forge_id
-        } else {
-            // Need to install vanilla first, then Forge
-            ensure_vanilla(&client, &mc_dir, &mc_version).await?;
-            install_forge(&client, &java_path, &mc_dir, &mc_version).await?
+        match loader.as_str() {
+            "forge" => {
+                if let Some(existing) = find_installed_forge(&mc_dir, &mc_ver, "forge") {
+                    existing
+                } else {
+                    log(&format!("[forge] Not installed, starting installation for MC {}", mc_ver));
+                    ensure_vanilla(&client, &mc_dir, &mc_ver).await?;
+                    install_forge(&client, &java_path, &mc_dir, &mc_ver).await?
+                }
+            }
+            "neoforge" => {
+                if let Some(existing) = find_installed_forge(&mc_dir, &mc_ver, "neoforge") {
+                    existing
+                } else {
+                    log(&format!("[neoforge] Not installed, starting installation for {}", mc_ver));
+                    let mc_version = version_str_to_mc(&mc_ver);
+                    ensure_vanilla(&client, &mc_dir, &mc_version).await?;
+                    install_neoforge(&client, &java_path, &mc_dir, &mc_ver).await?
+                }
+            }
+            "fabric" => {
+                install_fabric(&client, &mc_dir, &mc_ver).await?
+            }
+            _ => {
+                log(&format!("[launch] Unknown loader {}, treating as vanilla", loader));
+                mc_ver
+            }
         }
     } else {
-        // Plain vanilla version
+        log(&format!("[launch] Vanilla version: {}", version));
         version.clone()
     };
 
-    log(&format!("Launching with version: {}", actual_version));
+    log(&format!("[launch] Using version ID: {}", actual_version));
 
     // ── Load version JSON ───────────────────────────────────────────────────
     set_progress("version", 0.0, 1.0, "Загрузка информации о версии...");
@@ -430,121 +648,197 @@ pub async fn launch_game(
     let version_dir = mc_dir.join("versions").join(&actual_version);
     let version_json_path = version_dir.join(format!("{}.json", actual_version));
 
-    // If version JSON missing for a vanilla version, download it
     if !version_json_path.exists() {
+        log(&format!("[launch] Version JSON missing, downloading vanilla {}", actual_version));
         let manifest_url = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
-        let manifest: VersionManifest = client.get(manifest_url).send().await
-            .map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
-        let entry = manifest.versions.iter().find(|v| v.id == actual_version)
-            .ok_or_else(|| format!("Version {} not found", actual_version))?;
+        let manifest: VersionManifest = client
+            .get(manifest_url)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .json()
+            .await
+            .map_err(|e| e.to_string())?;
+        let entry = manifest
+            .versions
+            .iter()
+            .find(|v| v.id == actual_version)
+            .ok_or_else(|| format!("Version {} not found in manifest", actual_version))?;
         download_file(&client, &entry.url, &version_json_path).await?;
     }
 
+    log(&format!("[launch] Reading version JSON: {}", version_json_path.display()));
     let version_info: VersionInfo = serde_json::from_str(
-        &fs::read_to_string(&version_json_path).map_err(|e| e.to_string())?,
-    ).map_err(|e| e.to_string())?;
+        &fs::read_to_string(&version_json_path)
+            .map_err(|e| format!("[launch] Cannot read version JSON: {}", e))?,
+    )
+    .map_err(|e| format!("[launch] Cannot parse version JSON: {}", e))?;
 
-    // ── Handle inheritsFrom (Forge inherits from vanilla) ───────────────────
+    log(&format!("[launch] mainClass: {}", version_info.main_class));
+    if let Some(ref inh) = version_info.inherits_from {
+        log(&format!("[launch] inheritsFrom: {}", inh));
+    }
+
+    // ── Handle inheritsFrom ─────────────────────────────────────────────────
     let (base_version_info, base_version_dir) = if let Some(ref base) = version_info.inherits_from {
-        log(&format!("Version inherits from: {}", base));
         let base_dir = mc_dir.join("versions").join(base);
         let base_json = base_dir.join(format!("{}.json", base));
 
         if !base_json.exists() {
+            log(&format!("[launch] Base version {} not found, ensuring vanilla", base));
             ensure_vanilla(&client, &mc_dir, base).await?;
+        } else {
+            log(&format!("[launch] Base version {} JSON present", base));
         }
 
         let info: VersionInfo = serde_json::from_str(
-            &fs::read_to_string(&base_json).map_err(|e| e.to_string())?,
-        ).map_err(|e| e.to_string())?;
+            &fs::read_to_string(&base_json)
+                .map_err(|e| format!("[launch] Cannot read base JSON: {}", e))?,
+        )
+        .map_err(|e| format!("[launch] Cannot parse base JSON: {}", e))?;
+
         (Some(info), Some(base_dir))
     } else {
         (None, None)
     };
 
     // ── Download client jar ─────────────────────────────────────────────────
-    set_progress("client", 0.0, 1.0, "Скачивание клиента...");
+    set_progress("client", 0.0, 1.0, "Проверка client.jar...");
 
-    // For Forge, the client jar comes from the inherited vanilla version
-    let effective_downloads = version_info.downloads.as_ref()
+    let effective_downloads = version_info
+        .downloads
+        .as_ref()
         .or_else(|| base_version_info.as_ref().and_then(|b| b.downloads.as_ref()));
 
     let effective_version_dir = base_version_dir.as_ref().unwrap_or(&version_dir);
     let effective_version_id = version_info.inherits_from.as_deref().unwrap_or(&actual_version);
     let client_jar_path = effective_version_dir.join(format!("{}.jar", effective_version_id));
 
+    log(&format!("[launch] client.jar path: {}", client_jar_path.display()));
+
     if let Some(dl) = effective_downloads {
         if let Some(c) = &dl.client {
             download_file(&client, &c.url, &client_jar_path).await?;
         }
+    } else {
+        log("[launch] WARNING: No downloads entry found for client jar");
     }
 
     // ── Download libraries ──────────────────────────────────────────────────
-    // Merge libraries from base (vanilla) + overlay (Forge)
     let mut all_libs: Vec<&Library> = Vec::new();
     if let Some(ref base) = base_version_info {
         all_libs.extend(base.libraries.iter());
     }
     all_libs.extend(version_info.libraries.iter());
 
-    let total_libs = all_libs.len() as f64;
+    let total_libs = all_libs.len();
+    log(&format!("[launch] Total libraries: {}", total_libs));
+
     let mut classpath_entries: Vec<String> = Vec::new();
+    let mut skipped = 0usize;
+    let mut downloaded = 0usize;
 
     for (i, lib) in all_libs.iter().enumerate() {
-        if !is_library_allowed(lib) { continue; }
-
-        if i % 10 == 0 {
-            set_progress("libraries", i as f64, total_libs,
-                &format!("Скачивание библиотек... ({}/{})", i + 1, total_libs as u32));
+        if !is_library_allowed(lib) {
+            skipped += 1;
+            continue;
         }
 
-        if let Some(downloads) = &lib.downloads {
-            if let Some(artifact) = &downloads.artifact {
+        if i % 20 == 0 {
+            set_progress(
+                "libraries",
+                i as f64,
+                total_libs as f64,
+                &format!("Библиотеки {}/{} (скачано: {})", i + 1, total_libs, downloaded),
+            );
+        }
+
+        if let Some(dl) = &lib.downloads {
+            if let Some(artifact) = &dl.artifact {
                 let lib_path = mc_dir.join("libraries").join(&artifact.path);
-                download_file(&client, &artifact.url, &lib_path).await?;
+                if !lib_path.exists() {
+                    log(&format!("[libs] Downloading: {} from {}", lib.name, artifact.url));
+                    downloaded += 1;
+                }
+                download_file(&client, &artifact.url, &lib_path).await
+                    .map_err(|e| format!("[libs] Failed to download {}: {}", lib.name, e))?;
                 classpath_entries.push(lib_path.to_string_lossy().to_string());
             }
         }
     }
 
+    log(&format!("[launch] Libraries: {} total, {} skipped by rules, {} downloaded", total_libs, skipped, downloaded));
+
     classpath_entries.push(client_jar_path.to_string_lossy().to_string());
+    log(&format!("[launch] Classpath entries: {}", classpath_entries.len()));
 
     // ── Download assets ─────────────────────────────────────────────────────
-    let effective_asset_index = version_info.asset_index.as_ref()
+    let effective_asset_index = version_info
+        .asset_index
+        .as_ref()
         .or_else(|| base_version_info.as_ref().and_then(|b| b.asset_index.as_ref()));
 
     if let Some(asset_index) = effective_asset_index {
-        set_progress("assets", 0.0, 1.0, "Загрузка ресурсов...");
-        let asset_index_path = mc_dir.join("assets").join("indexes")
+        set_progress("assets", 0.0, 1.0, &format!("Загрузка asset index {}...", asset_index.id));
+        log(&format!("[assets] Index ID: {}, URL: {}", asset_index.id, asset_index.url));
+
+        let asset_index_path = mc_dir
+            .join("assets")
+            .join("indexes")
             .join(format!("{}.json", asset_index.id));
         download_file(&client, &asset_index.url, &asset_index_path).await?;
 
-        let asset_json = fs::read_to_string(&asset_index_path).map_err(|e| e.to_string())?;
-        let assets: AssetIndexFile = serde_json::from_str(&asset_json).map_err(|e| e.to_string())?;
+        let asset_json = fs::read_to_string(&asset_index_path)
+            .map_err(|e| format!("[assets] Cannot read index: {}", e))?;
+        let assets: AssetIndexFile =
+            serde_json::from_str(&asset_json).map_err(|e| format!("[assets] Parse error: {}", e))?;
 
-        let total_assets = assets.objects.len() as f64;
+        let total_assets = assets.objects.len();
+        log(&format!("[assets] Total objects: {}", total_assets));
+        let mut assets_downloaded = 0usize;
+
         for (i, (_name, obj)) in assets.objects.iter().enumerate() {
-            if i % 50 == 0 {
-                set_progress("assets", i as f64, total_assets,
-                    &format!("Скачивание ресурсов... ({}/{})", i, total_assets as u32));
+            if i % 100 == 0 {
+                set_progress(
+                    "assets",
+                    i as f64,
+                    total_assets as f64,
+                    &format!("Ресурсы {}/{} (скачано: {})", i, total_assets, assets_downloaded),
+                );
             }
             let hash_prefix = &obj.hash[..2];
-            let asset_path = mc_dir.join("assets").join("objects").join(hash_prefix).join(&obj.hash);
-            let asset_url = format!("https://resources.download.minecraft.net/{}/{}", hash_prefix, obj.hash);
-            download_file(&client, &asset_url, &asset_path).await?;
+            let asset_path = mc_dir
+                .join("assets")
+                .join("objects")
+                .join(hash_prefix)
+                .join(&obj.hash);
+            if !asset_path.exists() {
+                let asset_url = format!(
+                    "https://resources.download.minecraft.net/{}/{}",
+                    hash_prefix, obj.hash
+                );
+                download_file(&client, &asset_url, &asset_path).await?;
+                assets_downloaded += 1;
+            }
         }
+        log(&format!("[assets] Done. Downloaded {} new assets", assets_downloaded));
+    } else {
+        log("[launch] WARNING: No asset index in version JSON");
     }
 
     // ── Build launch command ────────────────────────────────────────────────
-    set_progress("launch", 1.0, 1.0, "Запуск игры...");
+    set_progress("launch", 1.0, 1.0, "Сборка команды запуска...");
 
     let classpath = classpath_entries.join(";");
     let assets_dir = mc_dir.join("assets");
-    let effective_assets = version_info.assets.clone()
+    let effective_assets = version_info
+        .assets
+        .clone()
         .or_else(|| base_version_info.as_ref().and_then(|b| b.assets.clone()))
         .unwrap_or_else(|| actual_version.clone());
 
-    // JVM args
+    let natives_dir = version_dir.join("natives");
+
     let mut jvm_arg_list: Vec<String> = vec![format!("-Xmx{}M", max_memory)];
 
     let gpu = gpu_mode.as_deref().unwrap_or("auto");
@@ -572,11 +866,11 @@ pub async fn launch_game(
         ]);
     }
 
-    let natives_dir = version_dir.join("natives");
     jvm_arg_list.push(format!("-Djava.library.path={}", natives_dir.to_string_lossy()));
 
-    // Handle Forge JVM args from version JSON
     let main_class = version_info.main_class.clone();
+
+    // Forge/NeoForge JVM args from version JSON (e.g. -DignoreList=, -DlibraryDirectory=)
     if let Some(ref args_obj) = version_info.arguments {
         if let Some(jvm_args_list) = &args_obj.jvm {
             for arg in jvm_args_list {
@@ -585,7 +879,7 @@ pub async fn launch_game(
                         .replace("${classpath}", &classpath)
                         .replace("${natives_directory}", &natives_dir.to_string_lossy())
                         .replace("${launcher_name}", "RPWLauncher")
-                        .replace("${launcher_version}", "2.7")
+                        .replace("${launcher_version}", "2.10")
                         .replace("${library_directory}", &mc_dir.join("libraries").to_string_lossy())
                         .replace("${classpath_separator}", ";");
                     jvm_arg_list.push(replaced);
@@ -596,16 +890,21 @@ pub async fn launch_game(
 
     jvm_arg_list.push("-cp".to_string());
     jvm_arg_list.push(classpath.clone());
-    jvm_arg_list.push(main_class);
+    jvm_arg_list.push(main_class.clone());
+
+    log(&format!("[launch] mainClass: {}", main_class));
 
     let mut args = jvm_arg_list;
 
-    // Game arguments — check both formats
-    let effective_mc_args = version_info.minecraft_arguments.as_ref()
+    // Game arguments
+    let effective_mc_args = version_info
+        .minecraft_arguments
+        .as_ref()
         .or_else(|| base_version_info.as_ref().and_then(|b| b.minecraft_arguments.as_ref()));
 
-    if let Some(mc_args) = effective_mc_args {
-        let game_args = mc_args
+    if let Some(mc_args_str) = effective_mc_args {
+        log("[launch] Using legacy minecraftArguments format");
+        let game_args = mc_args_str
             .replace("${auth_player_name}", &username)
             .replace("${version_name}", &actual_version)
             .replace("${game_directory}", &mc_dir.to_string_lossy())
@@ -613,13 +912,16 @@ pub async fn launch_game(
             .replace("${assets_index_name}", &effective_assets)
             .replace("${auth_uuid}", &uuid)
             .replace("${auth_access_token}", &access_token)
-            .replace("${user_type}", "legacy")
+            .replace("${user_type}", "mojang")
             .replace("${version_type}", "RPWLauncher");
         args.extend(game_args.split_whitespace().map(|s| s.to_string()));
     } else {
-        // Modern arguments format
+        log("[launch] Using modern arguments.game format");
         let check_args = |info: &VersionInfo| {
-            info.arguments.as_ref().and_then(|a| a.game.as_ref()).map(|g| g.clone())
+            info.arguments
+                .as_ref()
+                .and_then(|a| a.game.as_ref())
+                .cloned()
         };
         let game_args_list = check_args(&version_info)
             .or_else(|| base_version_info.as_ref().and_then(|b| check_args(b)));
@@ -635,15 +937,20 @@ pub async fn launch_game(
                         .replace("${assets_index_name}", &effective_assets)
                         .replace("${auth_uuid}", &uuid)
                         .replace("${auth_access_token}", &access_token)
-                        .replace("${user_type}", "legacy")
+                        .replace("${user_type}", "mojang")
                         .replace("${version_type}", "RPWLauncher");
                     args.push(replaced);
                 }
             }
+        } else {
+            log("[launch] WARNING: No game arguments found in version JSON");
         }
     }
 
-    log(&format!("Launching: {} {:?}", java_path, &args[..args.len().min(8)]));
+    log(&format!("[launch] Total args: {}", args.len()));
+    log(&format!("[launch] First 10 args: {:?}", &args[..args.len().min(10)]));
+
+    set_progress("launch", 1.0, 1.0, "Запуск игры...");
 
     let mut cmd = Command::new(&java_path);
     cmd.args(&args).current_dir(&mc_dir);
@@ -655,9 +962,13 @@ pub async fn launch_game(
     }
 
     cmd.spawn()
-        .map_err(|e| { let msg = format!("Не удалось запустить игру: {}", e); log(&msg); msg })?;
+        .map_err(|e| {
+            let msg = format!("[launch] Failed to spawn game: {}", e);
+            log(&msg);
+            msg
+        })?;
 
-    log("Game launched successfully");
+    log("[launch] Game process spawned successfully");
     set_progress("done", 1.0, 1.0, "Игра запущена!");
 
     Ok("Game launched successfully".to_string())

@@ -1,0 +1,1 @@
+v2.10.0 fix Forge installer logging capture stdout stderr add Fabric NeoForge support verbose logs
