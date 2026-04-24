@@ -1,6 +1,6 @@
 [package]
 name = "rpw-launcher"
-version = "2.7.0"
+version = "2.8.0"
 description = "RPWorld Minecraft Launcher"
 authors = ["Sadoul"]
 edition = "2021"
@@ -32,6 +32,7 @@ uuid = { version = "1", features = ["v4"] }
 open = "5"
 chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2"
+base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

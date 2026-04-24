@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Main:', d.get\\('main',''\\)\\); print\\('Contributes:', list\\(\\(d.get\\('contributes',{}\\)\\).keys\\(\\)\\)\\)\")",
+      "Bash(python3 -c \"import cryptography; print\\(cryptography.__version__\\)\")",
+      "Bash(python3.9 -c \"import cryptography; print\\('cryptography OK for 3.9'\\)\")",
+      "Bash(\"C:/Users/smopo/AppData/Local/Programs/Python/Python39/python.exe\" -c \"import cryptography; print\\('cryptography OK'\\)\")",
+      "Bash(C:/Users/smopo/AppData/Local/Programs/Python/Python39/python.exe *)",
+      "Bash(python kombai_autoregister.py)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('kombai_auth_sniffer.py'\\).read\\(\\)\\); print\\('kombai_auth_sniffer.py: OK'\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('kombai_gui.pyw'\\).read\\(\\)\\); print\\('kombai_gui.pyw: OK'\\)\")",
+      "Bash(python3 -c \"import playwright; print\\('playwright available'\\)\")",
+      "Bash(python3 -c \"import sys; print\\(sys.executable, sys.version\\)\")",
+      "Read(//c/Users/smopo/Desktop/Kombai Tools/**)",
+      "Bash(taskkill /F /IM Code.exe)",
+      "Bash(taskkill /F /IM mitmdump.exe)",
+      "Bash(tasklist /FI \"IMAGENAME eq Code.exe\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(\"C:/Users/smopo/AppData/Local/Programs/Python/Python39/python.exe\" _runtime_test_full.py)",
+      "Bash(tasklist /FI \"IMAGENAME eq mitmdump.exe\")",
+      "Bash(tee logs/_runtime_test3.log)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(\"C:/Users/smopo/AppData/Local/Programs/Python/Python39/Scripts/mitmdump.exe\" --version)",
+      "Bash(sort -k6)",
+      "Bash(\"C:/Users/smopo/AppData/Local/Programs/Python/Python39/python.exe\" _test_login.py)",
+      "Bash(\"C:/Users/smopo/AppData/Local/Programs/Python/Python39/python.exe\" _test2.py)",
+      "Bash(tasklist)",
+      "Bash(echo \"Kill done: $?\")",
+      "Bash(cmd.exe //c \"taskkill /F /IM Code.exe\")",
+      "Bash(cmd.exe //c \"taskkill /F /IM mitmdump.exe\")",
+      "Bash(cmd.exe //c \"tasklist /FI IMAGENAME eq Code.exe\")",
+      "Bash(cmd.exe //c \"tasklist /FI IMAGENAME eq mitmdump.exe\")",
+      "Bash(powershell.exe *)",
+      "Bash(cmd.exe //c \"taskkill /F /IM python.exe\")",
+      "Bash(\"C:/Users/smopo/AppData/Local/Programs/Python/Python39/Scripts/mitmdump.exe\" -s \"kombai_auth_sniffer.py\" -p 8086 --ssl-insecure)"
+    ]
+  }
+}

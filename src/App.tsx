@@ -74,7 +74,10 @@ export default function App() {
       if (savedGpuMode) setGpuMode(savedGpuMode);
       if (savedTheme === "dark" || savedTheme === "light") setTheme(savedTheme);
 
-      try { const url = await invoke<string | null>("get_avatar"); if (url) setAvatarUrl(url); } catch { /* ignore */ }
+      const loggingEnabled = localStorage.getItem("rpw_logging") !== "false";
+      try { await invoke("set_logging_enabled", { enabled: loggingEnabled }); } catch { /* ignore */ }
+
+      try { const dataUrl = await invoke<string | null>("get_avatar"); if (dataUrl) setAvatarUrl(dataUrl); } catch { /* ignore */ }
 
       const savedAccount = await invoke<Account | null>("get_saved_account");
       if (savedAccount) setAccount(savedAccount);

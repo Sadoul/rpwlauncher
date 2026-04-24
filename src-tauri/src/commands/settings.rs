@@ -1,5 +1,6 @@
+use base64::{engine::general_purpose, Engine as _};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 fn data_dir() -> PathBuf {
@@ -8,12 +9,26 @@ fn data_dir() -> PathBuf {
         .join(".rpworld")
 }
 
+fn path_to_data_url(path: &Path) -> Option<String> {
+    let ext = path.extension()?.to_str()?.to_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => "image/png",
+    };
+    let data = fs::read(path).ok()?;
+    let b64 = general_purpose::STANDARD.encode(&data);
+    Some(format!("data:{};base64,{}", mime, b64))
+}
+
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-/// Copy the chosen image file into %APPDATA%/.rpworld/avatar.<ext>
-/// Returns a tauri asset URL that can be used as <img src="...">
+/// Copy the chosen image into %APPDATA%/.rpworld/avatar.<ext>
+/// Returns a base64 data URL so the frontend can display it without asset protocol
 #[tauri::command]
-pub async fn save_avatar(source_path: String, app: AppHandle) -> Result<String, String> {
+pub async fn save_avatar(source_path: String) -> Result<String, String> {
     let src = PathBuf::from(&source_path);
     let ext = src
         .extension()
@@ -27,26 +42,23 @@ pub async fn save_avatar(source_path: String, app: AppHandle) -> Result<String, 
     let dest = dest_dir.join(format!("avatar.{ext}"));
     fs::copy(&src, &dest).map_err(|e| format!("Не удалось скопировать аватарку: {e}"))?;
 
-    // Return convertFileSrc-compatible path — use tauri asset protocol
-    let path_str = dest.to_string_lossy().replace('\\', "/");
-    Ok(format!("asset://localhost/{}", urlencoding::encode(&path_str)))
+    path_to_data_url(&dest).ok_or_else(|| "Не удалось прочитать аватарку".to_string())
 }
 
-/// Return the saved avatar URL (if exists)
+/// Return the saved avatar as a base64 data URL (if exists)
 #[tauri::command]
 pub fn get_avatar() -> Option<String> {
     let base = data_dir();
     for ext in ["gif", "webp", "png", "jpg", "jpeg"] {
         let p = base.join(format!("avatar.{ext}"));
         if p.exists() {
-            let path_str = p.to_string_lossy().replace('\\', "/");
-            return Some(format!("asset://localhost/{}", urlencoding::encode(&path_str)));
+            return path_to_data_url(&p);
         }
     }
     None
 }
 
-// ─── Open data folder in Explorer ───���────────────────────────────────────────
+// ─── Open data folder in Explorer ─────────────────────────────────────────────
 
 #[tauri::command]
 pub fn open_data_folder() -> Result<(), String> {
@@ -80,16 +92,13 @@ pub fn open_data_folder() -> Result<(), String> {
 
 // ─── Delete launcher ──────────────────────────────────────────────────────────
 
-/// Uninstall via NSIS uninstaller from registry, then exit.
 #[tauri::command]
 pub async fn delete_launcher(app: AppHandle) -> Result<(), String> {
-    // First, remove data directory
     let dir = data_dir();
     if dir.exists() {
         fs::remove_dir_all(&dir).map_err(|e| format!("Не удалось удалить данные: {e}"))?;
     }
 
-    // Try to find and run NSIS uninstaller
     #[cfg(windows)]
     {
         let uninstall_keys = [
@@ -104,7 +113,6 @@ pub async fn delete_launcher(app: AppHandle) -> Result<(), String> {
         for key_path in &uninstall_keys {
             if let Ok(key) = hkcu.open_subkey(key_path) {
                 if let Ok(uninstall_str) = key.get_value::<String, _>("UninstallString") {
-                    // Run uninstaller silently
                     let _ = std::process::Command::new(&uninstall_str)
                         .args(["/S"])
                         .spawn();
@@ -114,7 +122,6 @@ pub async fn delete_launcher(app: AppHandle) -> Result<(), String> {
         }
     }
 
-    // Exit the launcher
     app.exit(0);
     Ok(())
 }

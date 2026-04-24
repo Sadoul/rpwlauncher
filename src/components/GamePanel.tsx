@@ -237,7 +237,6 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
       <div style={{ flex: 1 }} />
 
       <div className="game-play-area">
-        <div className="play-glass-wrapper">
           <AnimatePresence mode="wait">
             {launching ? (
               <motion.div
@@ -328,7 +327,6 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
       </div>
 
       <div className="game-panel-footer">

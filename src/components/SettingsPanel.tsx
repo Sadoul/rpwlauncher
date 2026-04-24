@@ -63,10 +63,41 @@ export default function SettingsPanel({
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [toast, setToast] = useState("");
+  const [loggingEnabled, setLoggingEnabled] = useState(() => {
+    return localStorage.getItem("rpw_logging") !== "false";
+  });
+  const [logContent, setLogContent] = useState("");
+  const [showLog, setShowLog] = useState(false);
+  const [logPath, setLogPath] = useState("");
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(""), 3000);
+  };
+
+  // Logging
+  const handleToggleLogging = async (enabled: boolean) => {
+    setLoggingEnabled(enabled);
+    localStorage.setItem("rpw_logging", enabled ? "true" : "false");
+    try { await invoke("set_logging_enabled", { enabled }); } catch { /* ignore */ }
+  };
+
+  const handleViewLog = async () => {
+    try {
+      const [content, path] = await Promise.all([
+        invoke<string>("get_log"),
+        invoke<string>("get_log_path"),
+      ]);
+      setLogContent(content || "(лог пустой)");
+      setLogPath(path);
+      setShowLog(true);
+    } catch (e) {
+      showToast("Ошибка: " + String(e));
+    }
+  };
+
+  const handleClearLog = async () => {
+    try { await invoke("clear_log"); setLogContent("(лог пустой)"); showToast("Лог очищен"); } catch { /* ignore */ }
   };
 
   // Java
@@ -127,8 +158,8 @@ export default function SettingsPanel({
       if (typeof selected === "string") {
         setAvatarLoading(true);
         try {
-          const url = await invoke<string>("save_avatar", { sourcePath: selected });
-          onAvatarChange(url);
+          const dataUrl = await invoke<string>("save_avatar", { sourcePath: selected });
+          onAvatarChange(dataUrl);
           showToast("Аватарка обновлена");
         } catch (e) {
           showToast("Ошибка: " + String(e));
@@ -386,6 +417,51 @@ export default function SettingsPanel({
         >
           {deleteConfirm ? "Нажмите ещё раз для подтверждения" : "Удалить лаунчер"}
         </motion.button>
+      </Section>
+
+      {/* Logging */}
+      <Section title="Логи лаунчера">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={loggingEnabled}
+              onChange={e => handleToggleLogging(e.target.checked)}
+              style={{ width: 15, height: 15, accentColor: "var(--accent)", cursor: "pointer" }}
+            />
+            Вести лог лаунчера
+          </label>
+        </div>
+        {loggingEnabled && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn onClick={handleViewLog}>Открыть лог</Btn>
+            <Btn onClick={handleClearLog}>Очистить лог</Btn>
+          </div>
+        )}
+        {showLog && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            style={{ marginTop: 10 }}
+          >
+            {logPath && (
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6, opacity: 0.7 }}>
+                {logPath}
+              </div>
+            )}
+            <textarea
+              readOnly
+              value={logContent}
+              style={{
+                width: "100%", height: 180, resize: "vertical",
+                fontSize: 10, fontFamily: "'Cascadia Code','Fira Code',monospace",
+                padding: "8px 10px", borderRadius: "var(--r-sm)",
+                background: "var(--bg-glass)", border: "1px solid var(--border)",
+                color: "var(--text)", outline: "none",
+              }}
+            />
+          </motion.div>
+        )}
       </Section>
 
       {/* Toast */}

@@ -1,6 +1,6 @@
 mod commands;
 
-use commands::{auth, downloader, java, launcher, settings, updater, versions};
+use commands::{auth, downloader, java, launcher, logger, settings, updater, versions};
 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
@@ -45,6 +45,11 @@ pub fn run() {
             settings::get_avatar,
             settings::open_data_folder,
             settings::delete_launcher,
+            // Logger
+            logger::set_logging_enabled,
+            logger::get_log,
+            logger::clear_log,
+            logger::get_log_path,
             // Misc
             open_url,
         ])
