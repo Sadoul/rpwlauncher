@@ -1,1 +1,1 @@
-v2.10.0 fix Forge installer logging capture stdout stderr add Fabric NeoForge support verbose logs
+v2.11.0 fix stale update marker custom taskbar icon verbose updater logs

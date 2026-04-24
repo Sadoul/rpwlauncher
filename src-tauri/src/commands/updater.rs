@@ -3,7 +3,10 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
+
+use super::logger::log as launcher_log;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpdateInfo {
@@ -40,22 +43,52 @@ fn marker_path() -> PathBuf {
     data_dir().join("update_marker")
 }
 
-/// Called by frontend on startup: returns true if we just ran an update.
-/// Deletes the marker so it only fires once.
+/// Called by frontend on startup: returns true if we JUST ran an update (marker < 5 min old).
+/// Stale markers (crash, etc.) are deleted but ignored so auto-update can run again.
 #[tauri::command]
 pub fn check_just_updated() -> bool {
     let path = marker_path();
-    if path.exists() {
-        let _ = fs::remove_file(&path);
-        return true;
+    if !path.exists() {
+        return false;
     }
+
+    let content = fs::read_to_string(&path).unwrap_or_default();
+    let _ = fs::remove_file(&path);
+
+    // Marker format: "version:unix_timestamp"
+    // If timestamp is missing (old format) or older than 5 min, treat as stale
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    if let Some(ts_str) = content.split(':').nth(1) {
+        if let Ok(ts) = ts_str.parse::<u64>() {
+            let age_secs = now.saturating_sub(ts);
+            launcher_log(&format!("[updater] Found update marker, age: {}s", age_secs));
+            if age_secs < 300 {
+                launcher_log("[updater] Marker is fresh — skipping update check this run");
+                return true;
+            }
+            launcher_log("[updater] Marker is stale (>5min) — ignoring, will check for updates");
+            return false;
+        }
+    }
+
+    // Old-format marker without timestamp — treat as stale
+    launcher_log("[updater] Found old-format marker without timestamp — ignoring");
     false
 }
 
 fn write_update_marker() {
     let dir = data_dir();
     let _ = fs::create_dir_all(&dir);
-    let _ = fs::write(marker_path(), CURRENT_VERSION);
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let content = format!("{}:{}", CURRENT_VERSION, ts);
+    let _ = fs::write(marker_path(), content);
 }
 
 fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
@@ -104,9 +137,11 @@ fn find_installed_exe() -> Option<PathBuf> {
 
 #[tauri::command]
 pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
+    launcher_log(&format!("[updater] Checking for updates. Current version: {}", CURRENT_VERSION));
+
     let client = reqwest::Client::builder()
         .user_agent("RPWLauncher/1.0")
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -115,13 +150,23 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
         GITHUB_REPO
     );
 
+    launcher_log(&format!("[updater] Fetching: {}", api_url));
+
     let response = client
         .get(&api_url)
         .send()
         .await
-        .map_err(|e| format!("Ошибка сети: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("[updater] Network error: {}", e);
+            launcher_log(&msg);
+            msg
+        })?;
 
-    if !response.status().is_success() {
+    let status = response.status();
+    launcher_log(&format!("[updater] GitHub API response: {}", status));
+
+    if !status.is_success() {
+        launcher_log(&format!("[updater] API returned {}, skipping update check", status));
         return Ok(UpdateInfo {
             current_version: CURRENT_VERSION.to_string(),
             latest_version: CURRENT_VERSION.to_string(),
@@ -133,14 +178,22 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
         });
     }
 
-    let release: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+    let release: serde_json::Value = response.json().await.map_err(|e| {
+        let msg = format!("[updater] JSON parse error: {}", e);
+        launcher_log(&msg);
+        msg
+    })?;
+
     let tag = release["tag_name"]
         .as_str()
         .unwrap_or(CURRENT_VERSION)
         .to_string();
     let latest_clean = tag.trim_start_matches('v').to_string();
+    launcher_log(&format!("[updater] Latest release tag: {} (clean: {})", tag, latest_clean));
 
     let assets = release["assets"].as_array().cloned().unwrap_or_default();
+    launcher_log(&format!("[updater] Release has {} assets", assets.len()));
+
     let mut installer_url = String::new();
     let mut file_size: u64 = 0;
 
@@ -151,16 +204,26 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
             .unwrap_or("")
             .to_string();
         let size = asset["size"].as_u64().unwrap_or(0);
+        launcher_log(&format!("[updater] Asset: {} ({} bytes)", name, size));
 
-        if name.ends_with("_x64-setup.exe") && !name.contains("debug") {
+        if (name.ends_with("_x64-setup.exe") || name.ends_with("-setup.exe"))
+            && !name.contains("debug")
+        {
             installer_url = url;
             file_size = size;
+            launcher_log(&format!("[updater] Selected installer: {}", name));
         }
     }
 
     let release_notes = release["body"].as_str().unwrap_or("").to_string();
+    let version_cmp = compare_versions(&latest_clean, CURRENT_VERSION);
     let update_available = !installer_url.is_empty()
-        && compare_versions(&latest_clean, CURRENT_VERSION) == std::cmp::Ordering::Greater;
+        && version_cmp == std::cmp::Ordering::Greater;
+
+    launcher_log(&format!(
+        "[updater] Version comparison: {} vs {} => {:?} | installer_found={} | update_available={}",
+        latest_clean, CURRENT_VERSION, version_cmp, !installer_url.is_empty(), update_available
+    ));
 
     Ok(UpdateInfo {
         current_version: CURRENT_VERSION.to_string(),
