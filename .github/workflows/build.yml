@@ -6,16 +6,45 @@ on:
       - 'v*'
 
 # ─────────────────────────────────────────────────────────────
-# Parallel jobs:
-#   1. build-main  — Tauri NSIS installer  (~6-8 min with cache)
-#   2. build-stub  — plain Rust exe        (~90 sec with cache)
-#   3. release     — publish both to GitHub Releases
+# CI используется как fallback — если релиз уже опубликован
+# локальным скриптом release.ps1, все jobs пропускаются.
+# Параллельные jobs:
+#   1. check      — проверяет, нужна ли сборка
+#   2. build-main — Tauri NSIS installer  (~6-8 min with cache)
+#   3. build-stub — plain Rust exe        (~90 sec with cache)
+#   4. release    — publish both to GitHub Releases
 # ─────────────────────────────────────────────────────────────
 
 jobs:
+  # ── 0. Check — пропускаем если релиз уже опубликован ────────
+  check:
+    name: Check if release already exists
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Check existing release
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${{ github.ref_name }}
+          STATUS=$(gh release view "$TAG" --repo ${{ github.repository }} 2>&1 || true)
+          if echo "$STATUS" | grep -q "assets:"; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Release $TAG already has assets — skipping CI build"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Release $TAG has no assets — CI will build"
+          fi
+
   # ── 1. Main Tauri app (NSIS installer) ──────────────────────
   build-main:
     name: Build Main App
+    needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: windows-latest
     permissions:
       contents: write
@@ -57,6 +86,8 @@ jobs:
   # ── 2. Stub — tiny plain Rust exe (~400 KB, ~90 sec) ────────
   build-stub:
     name: Build Stub (plain Rust)
+    needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: windows-latest
 
     steps:
@@ -83,7 +114,8 @@ jobs:
   # ── 3. Publish release ──────────────────────────────────────
   release:
     name: Publish Release
-    needs: [build-main, build-stub]
+    needs: [check, build-main, build-stub]
+    if: needs.check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
