@@ -180,6 +180,16 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
     setCancelling(false);
   };
 
+  const copyError = async () => {
+    if (!error) return;
+    try {
+      await navigator.clipboard.writeText(error);
+      setError(`${error}\n\n[Скопировано в буфер обмена]`);
+    } catch {
+      setError(`${error}\n\n[Не удалось скопировать автоматически — выделите текст вручную]`);
+    }
+  };
+
   const progressPercent = progress && progress.total > 0
     ? Math.round((progress.progress / progress.total) * 100)
     : 0;
@@ -236,7 +246,8 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
 
       <div style={{ flex: 1 }} />
 
-      <div className="game-play-area">
+      {(launching || error || (!javaPath && !config.locked)) && (
+        <div className="game-play-area">
           <AnimatePresence mode="wait">
             {launching ? (
               <motion.div
@@ -284,39 +295,20 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
               >
                 {error && (
                   <motion.div
+                    className="launch-error-card"
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
-                    style={{
-                      color: "var(--accent-red)",
-                      fontSize: "12px",
-                      textAlign: "center",
-                      width: "100%",
-                      padding: "10px 14px",
-                      background: "rgba(192, 57, 43, 0.12)",
-                      borderRadius: "10px",
-                      border: "1px solid rgba(192, 57, 43, 0.28)",
-                    }}
                   >
-                    {error}
+                    <pre className="launch-error-text">{error}</pre>
+                    <motion.button
+                      className="copy-error-button"
+                      onClick={copyError}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                    >
+                      Скопировать ошибку
+                    </motion.button>
                   </motion.div>
-                )}
-
-                {!config.locked && (
-                  <motion.button
-                    className="play-button-hero"
-                    onClick={handlePlay}
-                    disabled={launching || !javaPath || checkingUpdate || config.locked}
-                    whileHover={{ scale: 1.03, y: -2 }}
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    <span className="play-button-icon">▶</span>
-                    <span>
-                      {checkingUpdate ? "Проверка..."
-                        : status === "update" ? "Обновить"
-                        : status === "downloading" ? "Скачивание..."
-                        : "Играть"}
-                    </span>
-                  </motion.button>
                 )}
 
                 {!javaPath && !config.locked && (
@@ -327,18 +319,36 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
               </motion.div>
             )}
           </AnimatePresence>
-      </div>
+        </div>
+      )}
 
       <div className="game-panel-footer">
         <div className="footer-glass-card">
           <span className="footer-modpack-name">{config.title}</span>
           <span className="footer-mc-version">Minecraft {config.mcVersion} · Forge</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="footer-actions">
           <span className={`status-badge ${status === "ready" ? "ready" : status === "update" ? "update" : "downloading"}`}>
             <span className="status-dot" />
             {status === "ready" ? "Готово" : status === "update" ? "Обновление" : "Загрузка"}
           </span>
+          {!config.locked && (
+            <motion.button
+              className="play-button-hero footer-play-button"
+              onClick={handlePlay}
+              disabled={launching || !javaPath || checkingUpdate || config.locked}
+              whileHover={{ scale: 1.03, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <span className="play-button-icon">▶</span>
+              <span>
+                {checkingUpdate ? "Проверка..."
+                  : status === "update" ? "Обновить"
+                  : status === "downloading" ? "Скачивание..."
+                  : "Играть"}
+              </span>
+            </motion.button>
+          )}
         </div>
       </div>
     </motion.div>

@@ -400,11 +400,10 @@ async fn run_modded_installer(
     let profiles_path = mc_dir.join("launcher_profiles.json");
     if !profiles_path.exists() {
         log(&format!("[{}] Creating launcher_profiles.json required by Forge installer", loader));
-        let profiles_json = r#"{"profiles":{},"selectedProfile":"","clientToken":"rpwlauncher","authenticationDatabase":{}}"
-"#;
-        let _ = fs::write(&profiles_path, profiles_json);
+        let profiles_json = "{\"profiles\":{},\"selectedProfile\":\"\",\"clientToken\":\"rpwlauncher\",\"authenticationDatabase\":{}}";
+        fs::write(&profiles_path, profiles_json)
+            .map_err(|e| format!("[{}] Cannot create launcher_profiles.json: {}", loader, e))?;
     }
-
     let installer_path = mc_dir.join(format!("{}-installer.jar", loader));
     if installer_path.exists() {
         let _ = fs::remove_file(&installer_path);
@@ -1083,3 +1082,5 @@ pub async fn launch_game(
 pub async fn get_launch_progress() -> Result<Option<LaunchProgress>, String> {
     Ok(LAUNCH_PROGRESS.lock().map_err(|e| e.to_string())?.clone())
 }
+
+
