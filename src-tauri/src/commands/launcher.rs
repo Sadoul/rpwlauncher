@@ -1029,11 +1029,19 @@ pub async fn launch_game(
                 .and_then(|a| a.game.as_ref())
                 .cloned()
         };
-        let game_args_list = check_args(&version_info)
-            .or_else(|| base_version_info.as_ref().and_then(|b| check_args(b)));
+        let mut merged_game_args = Vec::new();
+        if let Some(game_args) = check_args(&version_info) {
+            merged_game_args.extend(game_args);
+        }
+        if let Some(base_args) = base_version_info.as_ref().and_then(|b| check_args(b)) {
+            merged_game_args.extend(base_args);
+        }
 
-        if let Some(game_args) = game_args_list {
-            for arg in &game_args {
+        if merged_game_args.is_empty() {
+            log("[launch] WARNING: No game arguments found in version JSON");
+        } else {
+            log(&format!("[launch] Game arguments merged: {}", merged_game_args.len()));
+            for arg in &merged_game_args {
                 if let Some(s) = arg.as_str() {
                     let replaced = s
                         .replace("${auth_player_name}", &username)
@@ -1043,13 +1051,14 @@ pub async fn launch_game(
                         .replace("${assets_index_name}", &effective_assets)
                         .replace("${auth_uuid}", &uuid)
                         .replace("${auth_access_token}", &access_token)
+                        .replace("${clientid}", "")
+                        .replace("${auth_xuid}", "")
+                        .replace("${user_properties}", "{}")
                         .replace("${user_type}", "mojang")
                         .replace("${version_type}", "RPWLauncher");
                     args.push(replaced);
                 }
             }
-        } else {
-            log("[launch] WARNING: No game arguments found in version JSON");
         }
     }
 
