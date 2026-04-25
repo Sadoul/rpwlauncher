@@ -276,6 +276,9 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
 
     emit("applying", total, total, 0, "Установка обновления...");
 
+    // Small delay so user can actually see the "Applying" stage in UI
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+
     // Write marker BEFORE we exit — on next startup the update check is skipped
     write_update_marker();
 
