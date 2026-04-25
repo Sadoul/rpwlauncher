@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-const ACCOUNTS_URL: &str = "https://raw.githubusercontent.com/Sadoul/rpwlauncher/main/public/auth/offline_accounts.rpwenc";
 const ACCOUNTS_KEY: &[u8] = b"RPWLauncherFriendsOnlyKey_v1";
 const ADMIN_USERNAME: &str = "Sadoul";
 const ACCOUNTS_REPO_API: &str = "https://api.github.com/repos/Sadoul/rpwlauncher/contents/public/auth/offline_accounts.rpwenc";
@@ -33,6 +32,8 @@ struct OfflineCredentialFile {
 #[derive(Debug, Deserialize)]
 struct GitHubContentResponse {
     sha: String,
+    #[serde(default)]
+    content: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +64,10 @@ fn get_admin_token_file() -> PathBuf {
     get_config_dir().join("admin_token.txt")
 }
 
+fn get_accounts_cache_file() -> PathBuf {
+    get_config_dir().join("offline_accounts.rpwenc")
+}
+
 fn xor_bytes(data: &[u8]) -> Vec<u8> {
     data.iter()
         .enumerate()
@@ -87,22 +92,33 @@ fn encrypt_accounts_payload(accounts: &OfflineCredentialFile) -> Result<String, 
 }
 
 async fn load_accounts() -> Result<OfflineCredentialFile, String> {
-    let remote = reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .user_agent("RPWLauncher/Accounts")
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .map_err(|e| e.to_string())?
-        .get(format!("{}?t={}", ACCOUNTS_URL, chrono::Utc::now().timestamp_millis()))
+        .map_err(|e| e.to_string())?;
+
+    let remote = client
+        .get(ACCOUNTS_REPO_API)
+        .query(&[("ref", ACCOUNTS_BRANCH), ("cache_bust", &chrono::Utc::now().timestamp_millis().to_string())])
         .send()
         .await;
 
     if let Ok(response) = remote {
         if response.status().is_success() {
-            if let Ok(text) = response.text().await {
-                if let Ok(accounts) = decrypt_accounts_payload(&text) {
+            if let Ok(file) = response.json::<GitHubContentResponse>().await {
+                let encrypted = file.content.replace(['\r', '\n', ' '], "");
+                if let Ok(accounts) = decrypt_accounts_payload(&encrypted) {
+                    let _ = fs::write(get_accounts_cache_file(), encrypted);
                     return Ok(accounts);
                 }
             }
+        }
+    }
+
+    if let Ok(cached) = fs::read_to_string(get_accounts_cache_file()) {
+        if let Ok(accounts) = decrypt_accounts_payload(&cached) {
+            return Ok(accounts);
         }
     }
 
@@ -253,6 +269,8 @@ pub async fn commit_admin_accounts(
         .json()
         .await
         .map_err(|e| format!("Commit создан, но ответ GitHub не разобран: {e}"))?;
+    fs::write(get_accounts_cache_file(), &encrypted)
+        .map_err(|e| format!("Commit создан, но локальный cache не сохранён: {e}"))?;
 
     Ok(format!(
         "Пароли обновлены. Commit: {}\n{}\nНовый SHA файла: {}",
