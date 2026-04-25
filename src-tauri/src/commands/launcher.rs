@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::Duration;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,8 @@ use super::logger::log;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 const INSTALLER_LOG_TAIL_LINES: usize = 80;
+const GAME_EARLY_EXIT_CHECK_SECONDS: u64 = 12;
+const GAME_LOG_TAIL_LINES: usize = 120;
 
 static LAUNCH_PROGRESS: Mutex<Option<LaunchProgress>> = Mutex::new(None);
 
@@ -1050,8 +1053,22 @@ pub async fn launch_game(
 
     set_progress("launch", 1.0, 1.0, "Запуск игры...");
 
+    let logs_dir = mc_dir.join("logs");
+    fs::create_dir_all(&logs_dir)
+        .map_err(|e| format!("[launch] Cannot create logs dir: {}", e))?;
+
+    let stdout_path = logs_dir.join("game-stdout.log");
+    let stderr_path = logs_dir.join("game-stderr.log");
+    let stdout_file = fs::File::create(&stdout_path)
+        .map_err(|e| format!("[launch] Cannot create stdout log: {}", e))?;
+    let stderr_file = fs::File::create(&stderr_path)
+        .map_err(|e| format!("[launch] Cannot create stderr log: {}", e))?;
+
     let mut cmd = Command::new(&java_path);
-    cmd.args(&args).current_dir(&mc_dir);
+    cmd.args(&args)
+        .current_dir(&mc_dir)
+        .stdout(Stdio::from(stdout_file))
+        .stderr(Stdio::from(stderr_file));
 
     #[cfg(windows)]
     {
@@ -1065,7 +1082,8 @@ pub async fn launch_game(
         cmd.env("__VK_LAYER_NV_optimus", "NVIDIA_only");
     }
 
-    cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| {
             let msg = format!("[launch] Failed to spawn game: {}", e);
             log(&msg);
@@ -1073,6 +1091,43 @@ pub async fn launch_game(
         })?;
 
     log("[launch] Game process spawned successfully");
+
+    for _ in 0..GAME_EARLY_EXIT_CHECK_SECONDS {
+        std::thread::sleep(Duration::from_secs(1));
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let code = status.code().map_or_else(|| "unknown".to_string(), |c| c.to_string());
+                let latest_log = logs_dir.join("latest.log");
+                let debug_log = logs_dir.join("debug.log");
+                let stderr_tail = fs::read_to_string(&stderr_path)
+                    .map(|s| tail_lines(&s, GAME_LOG_TAIL_LINES))
+                    .unwrap_or_default();
+                let latest_tail = fs::read_to_string(&latest_log)
+                    .map(|s| tail_lines(&s, GAME_LOG_TAIL_LINES))
+                    .unwrap_or_default();
+                let debug_tail = fs::read_to_string(&debug_log)
+                    .map(|s| tail_lines(&s, GAME_LOG_TAIL_LINES))
+                    .unwrap_or_default();
+                let msg = format!(
+                    "Minecraft закрылся во время загрузки (exit code {}).\n\nПоследние строки stderr:\n{}\n\nПоследние строки latest.log:\n{}\n\nПоследние строки debug.log:\n{}",
+                    code,
+                    stderr_tail,
+                    latest_tail,
+                    debug_tail
+                );
+                log(&format!("[launch] Early game exit detected: {}", msg));
+                return Err(msg);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                let msg = format!("[launch] Failed to check game process: {}", e);
+                log(&msg);
+                return Err(msg);
+            }
+        }
+    }
+
+    log("[launch] Game is still running after early-exit check");
     set_progress("done", 1.0, 1.0, "Игра запущена!");
 
     Ok("Game launched successfully".to_string())
