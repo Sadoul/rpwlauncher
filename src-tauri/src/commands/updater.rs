@@ -168,16 +168,14 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
     launcher_log(&format!("[updater] GitHub API response: {}", status));
 
     if !status.is_success() {
-        launcher_log(&format!("[updater] API returned {}, skipping update check", status));
-        return Ok(UpdateInfo {
-            current_version: CURRENT_VERSION.to_string(),
-            latest_version: CURRENT_VERSION.to_string(),
-            update_available: false,
-            download_url: String::new(),
-            installer_url: String::new(),
-            release_notes: String::new(),
-            file_size: 0,
-        });
+        let body = response.text().await.unwrap_or_default();
+        let msg = format!(
+            "[updater] GitHub API returned {}. Private repo token is missing/expired/forbidden. Body: {}",
+            status,
+            body
+        );
+        launcher_log(&msg);
+        return Err(msg);
     }
 
     let release: serde_json::Value = response.json().await.map_err(|e| {
@@ -273,6 +271,10 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
         .send()
         .await
         .map_err(|e| format!("Ошибка скачивания: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Ошибка скачивания обновления: HTTP {}", response.status()));
+    }
 
     let total = response.content_length().unwrap_or(info.file_size);
     let temp_dir = std::env::temp_dir();

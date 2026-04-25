@@ -57,18 +57,33 @@ fn main() {
         GITHUB_REPO
     );
 
-    let release: GitHubRelease = match client
+    let release_response = match client
         .get(&api_url)
         .header("Authorization", format!("Bearer {}", GITHUB_TOKEN))
         .send()
-        .and_then(|r| r.json())
     {
         Ok(r) => r,
-        Err(_) => {
-            // Can't reach GitHub → just launch whatever is installed
-            if let Some(path) = find_launcher() {
-                let _ = Command::new(&path).spawn();
-            }
+        Err(e) => {
+            show_error(&format!("Не удалось проверить обновление: {}", e));
+            if let Some(path) = find_launcher() { let _ = Command::new(&path).spawn(); }
+            exit(0);
+        }
+    };
+
+    if !release_response.status().is_success() {
+        show_error(&format!(
+            "Не удалось проверить обновление: GitHub вернул HTTP {}.\n\nПроверьте токен доступа к приватному репозиторию или сделайте репозиторий публичным.",
+            release_response.status()
+        ));
+        if let Some(path) = find_launcher() { let _ = Command::new(&path).spawn(); }
+        exit(0);
+    }
+
+    let release: GitHubRelease = match release_response.json() {
+        Ok(r) => r,
+        Err(e) => {
+            show_error(&format!("Не удалось разобрать ответ GitHub: {}", e));
+            if let Some(path) = find_launcher() { let _ = Command::new(&path).spawn(); }
             exit(0);
         }
     };
@@ -145,19 +160,30 @@ fn main() {
     let temp_dir = std::env::temp_dir();
     let installer_path = temp_dir.join(&asset.name);
 
-    let bytes = match client
+    let download_response = match client
         .get(&asset.browser_download_url)
         .header("Authorization", format!("Bearer {}", GITHUB_TOKEN))
         .send()
-        .and_then(|r| r.bytes())
     {
+        Ok(r) => r,
+        Err(e) => {
+            show_error(&format!("Ошибка скачивания обновления: {}", e));
+            if let Some(path) = launcher_path { let _ = Command::new(&path).spawn(); }
+            exit(0);
+        }
+    };
+
+    if !download_response.status().is_success() {
+        show_error(&format!("Ошибка скачивания обновления: HTTP {}", download_response.status()));
+        if let Some(path) = launcher_path { let _ = Command::new(&path).spawn(); }
+        exit(0);
+    }
+
+    let bytes = match download_response.bytes() {
         Ok(b) => b,
-        Err(_) => {
-            show_error("Ошибка скачивания обновления. Проверьте интернет-соединение.");
-            // Fallback: launch old version if available
-            if let Some(path) = launcher_path {
-                let _ = Command::new(&path).spawn();
-            }
+        Err(e) => {
+            show_error(&format!("Ошибка чтения обновления: {}", e));
+            if let Some(path) = launcher_path { let _ = Command::new(&path).spawn(); }
             exit(0);
         }
     };
