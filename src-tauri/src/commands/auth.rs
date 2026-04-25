@@ -47,6 +47,10 @@ fn get_account_file() -> PathBuf {
     get_config_dir().join("account.json")
 }
 
+fn get_admin_token_file() -> PathBuf {
+    get_config_dir().join("admin_token.txt")
+}
+
 fn xor_bytes(data: &[u8]) -> Vec<u8> {
     data.iter()
         .enumerate()
@@ -76,7 +80,7 @@ async fn load_accounts() -> Result<OfflineCredentialFile, String> {
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| e.to_string())?
-        .get(ACCOUNTS_URL)
+        .get(format!("{}?t={}", ACCOUNTS_URL, chrono::Utc::now().timestamp_millis()))
         .send()
         .await;
 
@@ -124,6 +128,26 @@ pub async fn login_offline(username: String, password: String) -> Result<Account
 }
 
 #[tauri::command]
+pub async fn get_admin_token(current_username: String) -> Result<String, String> {
+    if !current_username.eq_ignore_ascii_case(ADMIN_USERNAME) {
+        return Err("Доступ запрещён".to_string());
+    }
+    let path = get_admin_token_file();
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(path).map(|s| s.trim().to_string()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_admin_token(current_username: String, github_token: String) -> Result<(), String> {
+    if !current_username.eq_ignore_ascii_case(ADMIN_USERNAME) {
+        return Err("Доступ запрещён".to_string());
+    }
+    fs::write(get_admin_token_file(), github_token.trim()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn get_admin_accounts(current_username: String) -> Result<Vec<OfflineCredential>, String> {
     if !current_username.eq_ignore_ascii_case(ADMIN_USERNAME) {
         return Err("Доступ запрещён".to_string());
@@ -164,8 +188,9 @@ pub async fn commit_admin_accounts(
     if token.is_empty() {
         return Err("Введите GitHub token с доступом Contents: Read and write".to_string());
     }
+    fs::write(get_admin_token_file(), token).map_err(|e| format!("Не удалось сохранить токен: {e}"))?;
 
-    let encrypted = encrypt_accounts_payload(&with_admin_account(accounts))?;
+    let encrypted = encrypt_accounts_payload(&with_admin_account(accounts.clone()))?;
     let client = reqwest::Client::builder()
         .user_agent("RPWLauncher-AdminPanel")
         .timeout(std::time::Duration::from_secs(30))

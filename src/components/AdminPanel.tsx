@@ -10,15 +10,16 @@ interface Props {
   username: string;
 }
 
-const TOKEN_STORAGE_KEY = "rpw_admin_github_token";
-
 export default function AdminPanel({ username }: Props) {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
-  const [githubToken, setGithubToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || "");
+  const [githubToken, setGithubToken] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    loadToken();
+  }, []);
 
   const load = async () => {
     try {
@@ -29,13 +30,26 @@ export default function AdminPanel({ username }: Props) {
     }
   };
 
+  const loadToken = async () => {
+    try {
+      const token = await invoke<string>("get_admin_token", { currentUsername: username });
+      setGithubToken(token);
+    } catch {
+      // ignore
+    }
+  };
+
   const updatePassword = (index: number, password: string) => {
     setAccounts(prev => prev.map((row, i) => i === index ? { ...row, password } : row));
   };
 
-  const saveToken = (token: string) => {
+  const saveToken = async (token: string) => {
     setGithubToken(token);
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    try {
+      await invoke("save_admin_token", { currentUsername: username, githubToken: token });
+    } catch {
+      // token will still stay in state until restart
+    }
   };
 
   const commitChanges = async () => {
@@ -48,7 +62,6 @@ export default function AdminPanel({ username }: Props) {
         accounts,
       });
       setMessage(result);
-      await load();
     } catch (e) {
       setMessage(String(e));
     } finally {

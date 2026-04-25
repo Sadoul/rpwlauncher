@@ -117,6 +117,8 @@ pub fn run() {
             auth::login_offline,
             auth::login_microsoft,
             auth::get_saved_account,
+            auth::get_admin_token,
+            auth::save_admin_token,
             auth::get_admin_accounts,
             auth::encrypt_admin_accounts,
             auth::commit_admin_accounts,
