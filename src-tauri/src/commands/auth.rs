@@ -181,25 +181,31 @@ pub async fn get_admin_accounts(current_username: String) -> Result<Vec<OfflineC
         return Err("Доступ запрещён".to_string());
     }
     let accounts = load_accounts().await?;
-    Ok(accounts
-        .accounts
-        .into_iter()
-        .filter(|account| !account.username.eq_ignore_ascii_case(ADMIN_USERNAME))
-        .collect())
+    Ok(accounts.accounts)
 }
 
-fn with_admin_account(accounts: Vec<OfflineCredential>) -> OfflineCredentialFile {
-    let mut with_admin = vec![OfflineCredential {
-        username: ADMIN_USERNAME.to_string(),
-        password: "idi_nahui1".to_string(),
-    }];
-    with_admin.extend(accounts.into_iter().filter(|a| !a.username.eq_ignore_ascii_case(ADMIN_USERNAME)));
-    OfflineCredentialFile { accounts: with_admin }
+fn normalized_accounts(accounts: Vec<OfflineCredential>) -> Result<OfflineCredentialFile, String> {
+    let mut result: Vec<OfflineCredential> = Vec::new();
+    for account in accounts {
+        let username = account.username.trim().to_string();
+        let password = account.password.trim().to_string();
+        if username.is_empty() || password.is_empty() {
+            return Err("Ник и пароль не могут быть пустыми".to_string());
+        }
+        if result.iter().any(|existing| existing.username.eq_ignore_ascii_case(&username)) {
+            return Err(format!("Дубликат аккаунта: {username}"));
+        }
+        result.push(OfflineCredential { username, password });
+    }
+    if !result.iter().any(|a| a.username.eq_ignore_ascii_case(ADMIN_USERNAME)) {
+        return Err("Нельзя удалить аккаунт Sadoul".to_string());
+    }
+    Ok(OfflineCredentialFile { accounts: result })
 }
 
 #[tauri::command]
 pub async fn encrypt_admin_accounts(accounts: Vec<OfflineCredential>) -> Result<String, String> {
-    encrypt_accounts_payload(&with_admin_account(accounts))
+    encrypt_accounts_payload(&normalized_accounts(accounts)?)
 }
 
 #[tauri::command]
@@ -218,7 +224,8 @@ pub async fn commit_admin_accounts(
     }
     fs::write(get_admin_token_file(), token).map_err(|e| format!("Не удалось сохранить токен: {e}"))?;
 
-    let encrypted = encrypt_accounts_payload(&with_admin_account(accounts.clone()))?;
+    let credential_file = normalized_accounts(accounts.clone())?;
+    let encrypted = encrypt_accounts_payload(&credential_file)?;
     let client = reqwest::Client::builder()
         .user_agent("RPWLauncher-AdminPanel")
         .timeout(std::time::Duration::from_secs(30))

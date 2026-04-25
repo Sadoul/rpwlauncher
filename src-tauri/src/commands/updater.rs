@@ -308,35 +308,42 @@ fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), S
     let installer_str = installer.to_string_lossy().to_string();
     let update_log_file = update_log_path().to_string_lossy().to_string();
 
-    let batch_path = std::env::temp_dir().join("rpw_nsis_update.bat");
+    let script_path = std::env::temp_dir().join("rpw_nsis_update.ps1");
 
-    // Batch script steps:
+    // Hidden PowerShell updater steps:
     //  1. Wait for parent process (this app) to exit cleanly
     //  2. Run NSIS installer silently
-    //  3. Self-delete
-    let batch = format!(
-        "@echo off\r\n\
-         echo [%date% %time%] updater batch started >> \"{log}\"\r\n\
-         echo [%date% %time%] waiting for launcher exit >> \"{log}\"\r\n\
-         timeout /t 5 /nobreak >nul\r\n\
-         echo [%date% %time%] running installer: {installer} >> \"{log}\"\r\n\
-         \"{installer}\" /S >> \"{log}\" 2>>&1\r\n\
-         echo [%date% %time%] installer exit code: %ERRORLEVEL% >> \"{log}\"\r\n\
-         del \"{installer}\"\r\n\
-         echo [%date% %time%] updater batch finished >> \"{log}\"\r\n\
-         (goto) 2>nul & del \"%~f0\"\r\n",
-        installer = installer_str,
-        log = update_log_file,
+    //  3. Remove temporary files
+    let script = format!(
+        "$ErrorActionPreference = 'Continue'\r\n\
+         Add-Content -Path '{log}' -Value \"[$(Get-Date)] updater script started\"\r\n\
+         Start-Sleep -Seconds 5\r\n\
+         Add-Content -Path '{log}' -Value \"[$(Get-Date)] running installer: {installer}\"\r\n\
+         $p = Start-Process -FilePath '{installer}' -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden\r\n\
+         Add-Content -Path '{log}' -Value \"[$(Get-Date)] installer exit code: $($p.ExitCode)\"\r\n\
+         Remove-Item -LiteralPath '{installer}' -Force -ErrorAction SilentlyContinue\r\n\
+         Add-Content -Path '{log}' -Value \"[$(Get-Date)] updater script finished\"\r\n\
+         Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\r\n",
+        installer = installer_str.replace('\'', "''"),
+        log = update_log_file.replace('\'', "''"),
     );
 
-    fs::write(&batch_path, batch.as_bytes()).map_err(|e| e.to_string())?;
-    update_log(&format!("[updater] Batch written: {}", batch_path.display()));
+    fs::write(&script_path, script.as_bytes()).map_err(|e| e.to_string())?;
+    update_log(&format!("[updater] Hidden updater script written: {}", script_path.display()));
 
-    Command::new("cmd")
-        .args(["/c", "start", "/min", "", batch_path.to_str().unwrap_or("")])
+    Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            script_path.to_str().unwrap_or(""),
+        ])
         .spawn()
         .map_err(|e| e.to_string())?;
-    update_log("[updater] Batch started, app will exit in 2 seconds");
+    update_log("[updater] Hidden updater script started, app will exit in 2 seconds");
 
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(2000)).await;

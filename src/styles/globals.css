@@ -920,20 +920,31 @@ button { font-family: inherit; }
   line-height: 1.45;
 }
 .admin-account-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.admin-token-box, .admin-add-box {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  background: rgba(0,0,0,0.24);
+  border: 1px solid var(--border);
+}
 .admin-token-box {
   display: grid;
   grid-template-columns: 180px 1fr;
   gap: 10px;
   align-items: center;
-  padding: 12px;
-  margin-bottom: 14px;
-  border-radius: var(--r-sm);
-  background: rgba(255, 199, 92, 0.10);
-  border: 1px solid rgba(255, 199, 92, 0.24);
+  background: rgba(255, 199, 92, 0.08);
+  border-color: rgba(255, 199, 92, 0.2);
 }
+.admin-add-box {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.admin-add-box .admin-account-name { grid-column: 1 / -1; margin-bottom: 4px; }
 .admin-account-row {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 140px 1fr auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -941,17 +952,20 @@ button { font-family: inherit; }
   background: rgba(0,0,0,0.28);
   border: 1px solid var(--border);
 }
-.admin-account-name { font-weight: 800; color: var(--text); }
-.admin-password-input, .admin-encrypted-output {
+.admin-account-name { font-weight: 800; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.admin-password-input {
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: var(--r-sm);
   border: 1px solid var(--border);
   background: rgba(0,0,0,0.42);
   color: var(--text);
   outline: none;
+  font-size: 13px;
 }
-.admin-encrypted-output { min-height: 120px; margin-top: 12px; font-family: 'Cascadia Code', monospace; font-size: 11px; resize: vertical; }
+.settings-btn.compact { padding: 8px 10px; min-width: 76px; font-size: 11px; }
+.settings-btn.danger { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+.admin-message { white-space: pre-wrap; }
 
 /* Settings buttons */
 .settings-btn {
