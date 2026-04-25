@@ -4,6 +4,23 @@ use commands::{auth, downloader, java, launcher, logger, settings, updater, vers
 use tauri::Manager;
 
 #[cfg(windows)]
+fn ensure_single_instance_or_exit() {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
+    use windows::Win32::System::Threading::CreateMutexW;
+
+    let name: Vec<u16> = "Global\\RPWorldLauncherSingleInstance\0".encode_utf16().collect();
+    unsafe {
+        let handle = CreateMutexW(None, false, PCWSTR(name.as_ptr()));
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            std::process::exit(0);
+        }
+        // Intentionally keep the mutex handle alive for the process lifetime.
+        let _ = Box::leak(Box::new(handle));
+    }
+}
+
+#[cfg(windows)]
 fn set_windows_app_user_model_id() {
     use windows::core::HSTRING;
     use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
@@ -70,7 +87,10 @@ fn open_url(url: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(windows)]
-    set_windows_app_user_model_id();
+    {
+        ensure_single_instance_or_exit();
+        set_windows_app_user_model_id();
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

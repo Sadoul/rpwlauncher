@@ -80,6 +80,20 @@ pub fn check_just_updated() -> bool {
     false
 }
 
+fn update_log_path() -> PathBuf {
+    std::env::temp_dir().join("rpw_update.log")
+}
+
+fn update_log(message: &str) {
+    let line = format!("[{}] {}\r\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), message);
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(update_log_path())
+        .and_then(|mut file| file.write_all(line.as_bytes()));
+    launcher_log(message);
+}
+
 fn write_update_marker() {
     let dir = data_dir();
     let _ = fs::create_dir_all(&dir);
@@ -223,6 +237,7 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
         );
     };
 
+    update_log(&format!("[updater] Starting in-app update {} -> {}", info.current_version, info.latest_version));
     emit("downloading", 0, info.file_size, 0, "Начало скачивания...");
 
     let client = reqwest::Client::builder()
@@ -243,6 +258,7 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
     let total = response.content_length().unwrap_or(info.file_size);
     let temp_dir = std::env::temp_dir();
     let download_path = temp_dir.join(format!("rpw-setup-{}.exe", info.latest_version));
+    update_log(&format!("[updater] Download target: {}", download_path.display()));
 
     use futures_util::StreamExt;
     let mut stream = response.bytes_stream();
@@ -274,6 +290,7 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
     }
     drop(file);
 
+    update_log(&format!("[updater] Download finished: {} bytes", downloaded));
     emit("applying", total, total, 0, "Установка обновления...");
 
     // Small delay so user can actually see the "Applying" stage in UI
@@ -289,6 +306,7 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
 
 fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), String> {
     let installer_str = installer.to_string_lossy().to_string();
+    let update_log_file = update_log_path().to_string_lossy().to_string();
 
     let batch_path = std::env::temp_dir().join("rpw_nsis_update.bat");
 
@@ -298,19 +316,27 @@ fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), S
     //  3. Self-delete
     let batch = format!(
         "@echo off\r\n\
-         timeout /t 3 /nobreak >nul\r\n\
-         \"{installer}\" /S\r\n\
+         echo [%date% %time%] updater batch started >> \"{log}\"\r\n\
+         echo [%date% %time%] waiting for launcher exit >> \"{log}\"\r\n\
+         timeout /t 5 /nobreak >nul\r\n\
+         echo [%date% %time%] running installer: {installer} >> \"{log}\"\r\n\
+         \"{installer}\" /S >> \"{log}\" 2>>&1\r\n\
+         echo [%date% %time%] installer exit code: %ERRORLEVEL% >> \"{log}\"\r\n\
          del \"{installer}\"\r\n\
-         exit\r\n",
+         echo [%date% %time%] updater batch finished >> \"{log}\"\r\n\
+         (goto) 2>nul & del \"%~f0\"\r\n",
         installer = installer_str,
+        log = update_log_file,
     );
 
     fs::write(&batch_path, batch.as_bytes()).map_err(|e| e.to_string())?;
+    update_log(&format!("[updater] Batch written: {}", batch_path.display()));
 
     Command::new("cmd")
         .args(["/c", "start", "/min", "", batch_path.to_str().unwrap_or("")])
         .spawn()
         .map_err(|e| e.to_string())?;
+    update_log("[updater] Batch started, app will exit in 2 seconds");
 
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(2000)).await;

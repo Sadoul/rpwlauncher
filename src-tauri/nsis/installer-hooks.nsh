@@ -10,6 +10,12 @@
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
-  ; --- POSTINSTALL ONLY launch! ---
-  ; Batch/stub should NEVER launch, only this hook.
+  ; --- Launch RPWorld Launcher exactly once after successful install ---
+  ; Duplicate windows are prevented by the app-level single-instance mutex.
+  IfFileExists "$INSTDIR\rpw-launcher.exe" 0 +3
+    ExecShell "open" "$INSTDIR\rpw-launcher.exe"
+    Goto done
+  IfFileExists "$INSTDIR\RPWorld Launcher.exe" 0 done
+    ExecShell "open" "$INSTDIR\RPWorld Launcher.exe"
+  done:
 !macroend

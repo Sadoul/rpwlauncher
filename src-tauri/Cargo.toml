@@ -1,6 +1,6 @@
 [package]
 name = "rpw-launcher"
-version = "2.27.0"
+version = "2.28.0"
 description = "RPWorld Minecraft Launcher"
 authors = ["Sadoul"]
 edition = "2021"
@@ -36,7 +36,7 @@ base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-windows = { version = "0.58", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls", "Win32_System_LibraryLoader"] }
+windows = { version = "0.58", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_Security"] }
 raw-window-handle = "0.6"
 
 [profile.release]
