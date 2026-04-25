@@ -423,31 +423,41 @@ async fn run_modded_installer(
         mc_dir.display()
     ));
 
-    // Use javaw.exe on Windows (windowless Java launcher) to avoid console popup.
-    // CREATE_NO_WINDOW is kept as an extra safeguard.
+    // Use javaw.exe (GUI-subsystem Java, no console) + CREATE_NO_WINDOW via
+    // std::process::Command run inside spawn_blocking.
+    // tokio::process::Command does NOT expose creation_flags — must use std.
     let java_exe = javaw_path(java_path);
     log(&format!("[{}] Java executable for installer: {}", loader, java_exe));
 
-    let mut installer_cmd = tokio::process::Command::new(&java_exe);
-    installer_cmd
-        .args([
-            "-Djava.awt.headless=true",
-            "-jar",
-            installer_path.to_str().unwrap_or_default(),
-            "--installClient",
-        ])
-        .current_dir(mc_dir)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+    let installer_str = installer_path.to_str().unwrap_or_default().to_string();
+    let mc_dir_str = mc_dir.clone();
+    let loader_name = loader.to_string();
 
-    #[cfg(windows)]
-    installer_cmd.creation_flags(CREATE_NO_WINDOW);
+    let output = tokio::task::spawn_blocking(move || {
+        let mut cmd = Command::new(&java_exe);
+        cmd.args([
+                "-Djava.awt.headless=true",
+                "-jar",
+                &installer_str,
+                "--installClient",
+            ])
+            .current_dir(&mc_dir_str)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
 
-    let output = installer_cmd
-        .output()
-        .await
-        .map_err(|e| format!("[{}] Failed to spawn installer: {}", loader, e))?;
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        cmd.output()
+            .map_err(|e| format!("[{}] Failed to spawn installer: {}", loader_name, e))
+    })
+    .await
+    .map_err(|e| format!("[{}] spawn_blocking failed: {}", loader, e))?
+    .map_err(|e| e)?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
