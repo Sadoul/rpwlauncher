@@ -11,6 +11,9 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod token;
+use token::GITHUB_TOKEN;
+
 use std::path::PathBuf;
 use std::process::{Command, exit};
 
@@ -54,7 +57,12 @@ fn main() {
         GITHUB_REPO
     );
 
-    let release: GitHubRelease = match client.get(&api_url).send().and_then(|r| r.json()) {
+    let release: GitHubRelease = match client
+        .get(&api_url)
+        .header("Authorization", format!("Bearer {}", GITHUB_TOKEN))
+        .send()
+        .and_then(|r| r.json())
+    {
         Ok(r) => r,
         Err(_) => {
             // Can't reach GitHub → just launch whatever is installed
@@ -139,6 +147,7 @@ fn main() {
 
     let bytes = match client
         .get(&asset.browser_download_url)
+        .header("Authorization", format!("Bearer {}", GITHUB_TOKEN))
         .send()
         .and_then(|r| r.bytes())
     {

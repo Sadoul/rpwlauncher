@@ -395,6 +395,16 @@ async fn run_modded_installer(
     loader: &str,
     mc_version: &str,
 ) -> Result<String, String> {
+    // Forge installer requires launcher_profiles.json in the game dir.
+    // Without it: "There is no Minecraft launcher profile, run the launcher first!"
+    let profiles_path = mc_dir.join("launcher_profiles.json");
+    if !profiles_path.exists() {
+        log(&format!("[{}] Creating launcher_profiles.json required by Forge installer", loader));
+        let profiles_json = r#"{"profiles":{},"selectedProfile":"","clientToken":"rpwlauncher","authenticationDatabase":{}}"
+"#;
+        let _ = fs::write(&profiles_path, profiles_json);
+    }
+
     let installer_path = mc_dir.join(format!("{}-installer.jar", loader));
     if installer_path.exists() {
         let _ = fs::remove_file(&installer_path);

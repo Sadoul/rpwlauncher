@@ -20,6 +20,10 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 
+# Secrets
+src-tauri/src/token.rs
+stub-rs/src/token.rs
+
 # Logs
 *.log
 npm-debug.log*

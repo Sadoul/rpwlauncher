@@ -1,4 +1,5 @@
 mod commands;
+mod token;
 
 use commands::{auth, downloader, java, launcher, logger, settings, updater, versions};
 use tauri::Manager;

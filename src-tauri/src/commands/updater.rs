@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 
 use super::logger::log as launcher_log;
+use crate::token::GITHUB_TOKEN;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpdateInfo {
@@ -154,6 +155,7 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
 
     let response = client
         .get(&api_url)
+        .header("Authorization", format!("Bearer {}", GITHUB_TOKEN))
         .send()
         .await
         .map_err(|e| {
@@ -267,6 +269,7 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
 
     let response = client
         .get(&info.installer_url)
+        .header("Authorization", format!("Bearer {}", GITHUB_TOKEN))
         .send()
         .await
         .map_err(|e| format!("Ошибка скачивания: {}", e))?;
