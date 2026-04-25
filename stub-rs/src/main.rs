@@ -1,7 +1,11 @@
 //! RPWorld Launcher Stub
 //! Tiny Windows executable (~400 KB) that:
-//!   1. If launcher already installed → launches it
-//!   2. Otherwise → downloads latest NSIS installer from GitHub, runs it silently
+//!   1. Checks GitHub for the latest release version
+//!   2. If installed version is outdated (or not installed) → downloads NSIS installer silently
+//!   3. Launches the (freshly) installed launcher
+//!
+//! This makes auto-update work even for users who have a very old version installed,
+//! because the stub itself handles the update — it never relies on the old launcher's code.
 //!
 //! No Tauri, no WebView → compiles in ~60-90 seconds.
 
@@ -12,6 +16,7 @@ use std::process::{Command, exit};
 
 #[derive(serde::Deserialize)]
 struct GitHubRelease {
+    tag_name: String,
     assets: Vec<GitHubAsset>,
 }
 
@@ -23,133 +28,186 @@ struct GitHubAsset {
 
 const GITHUB_REPO: &str = "Sadoul/rpwlauncher";
 const EXE_NAME:    &str = "rpw-launcher.exe";
-// Tauri NSIS installs to %LOCALAPPDATA%\<productName>
-// productName = "RPWorld Launcher"  →  InstallLocation = %LOCALAPPDATA%\RPWorld Launcher
 const INSTALL_DIR: &str = "RPWorld Launcher";
-// Registry key written by Tauri NSIS (no _is1 suffix for currentUser mode)
 const REG_KEY: &str =
     r"Software\Microsoft\Windows\CurrentVersion\Uninstall\RPWorld Launcher";
 
 fn main() {
-    // 1. Try to find and launch already-installed launcher
-    if let Some(path) = find_launcher() {
-        let _ = Command::new(&path).spawn();
-        exit(0);
-    }
-
-    // 2. Not installed — inform the user, then download + install
-    #[cfg(windows)]
-    unsafe {
-        use std::ffi::OsStr;
-        use std::os::windows::ffi::OsStrExt;
-
-        let msg: Vec<u16> = OsStr::new(
-            "RPWorld Launcher не установлен.\n\
-             Сейчас будет скачан и установлен автоматически.\n\n\
-             Нажмите OK чтобы продолжить.",
-        )
-        .encode_wide()
-        .chain(Some(0))
-        .collect();
-        let caption: Vec<u16> = OsStr::new("RPWorld Launcher")
-            .encode_wide()
-            .chain(Some(0))
-            .collect();
-        windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
-            0,
-            msg.as_ptr(),
-            caption.as_ptr(),
-            windows_sys::Win32::UI::WindowsAndMessaging::MB_OK
-                | windows_sys::Win32::UI::WindowsAndMessaging::MB_ICONINFORMATION,
-        );
-    }
-
-    // 3. Fetch latest release from GitHub
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("RPWorld-Stub/2.2")
+    let client = match reqwest::blocking::Client::builder()
+        .user_agent("RPWorld-Stub/3.0")
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .unwrap_or_else(|_| exit(1));
+    {
+        Ok(c) => c,
+        Err(_) => {
+            // No HTTP client → just launch whatever is installed
+            if let Some(path) = find_launcher() {
+                let _ = Command::new(&path).spawn();
+            }
+            exit(0);
+        }
+    };
 
-    let url = format!(
+    // ── 1. Fetch latest release info from GitHub ──────────────────────────────
+    let api_url = format!(
         "https://api.github.com/repos/{}/releases/latest",
         GITHUB_REPO
     );
 
-    let release: GitHubRelease = match client.get(&url).send().and_then(|r| r.json()) {
+    let release: GitHubRelease = match client.get(&api_url).send().and_then(|r| r.json()) {
         Ok(r) => r,
         Err(_) => {
-            show_error("Не удалось подключиться к GitHub. Проверьте интернет-соединение.");
-            exit(1);
+            // Can't reach GitHub → just launch whatever is installed
+            if let Some(path) = find_launcher() {
+                let _ = Command::new(&path).spawn();
+            }
+            exit(0);
         }
     };
 
-    // 4. Find NSIS setup exe in assets (prefer "setup" in name)
+    let latest_version = release.tag_name.trim_start_matches('v').to_string();
+
+    // ── 2. Check installed version ─────────────────────────────────────────────
+    let installed_version = get_installed_version();
+    let launcher_path = find_launcher();
+
+    let needs_update = match &installed_version {
+        Some(installed) => compare_versions(&latest_version, installed) == std::cmp::Ordering::Greater,
+        None => true, // not installed at all
+    };
+
+    if !needs_update {
+        // Already up to date — just launch
+        if let Some(path) = launcher_path {
+            let _ = Command::new(&path).spawn();
+        }
+        exit(0);
+    }
+
+    // ── 3. Find NSIS setup installer in release assets ────────────────────────
     let asset = release
         .assets
         .iter()
-        .find(|a| a.name.contains("setup") && a.name.ends_with(".exe"))
-        .or_else(|| {
-            release
-                .assets
-                .iter()
-                .find(|a| a.name.ends_with(".exe") && !a.name.contains("Stub") && !a.name.contains("stub"))
+        .find(|a| {
+            let n = a.name.to_lowercase();
+            (n.contains("setup") || n.contains("x64")) && n.ends_with(".exe")
+                && !n.contains("rpworld-launcher") // exclude stub itself
         });
 
     let asset = match asset {
         Some(a) => a,
         None => {
-            show_error("Не удалось найти установщик в релизе GitHub.");
-            exit(1);
+            // No installer asset found → just launch if installed
+            if let Some(path) = launcher_path {
+                let _ = Command::new(&path).spawn();
+            }
+            exit(0);
         }
     };
 
-    // 5. Download to %TEMP%
+    // ── 4. Show notification only on first install (no previous version) ──────
+    if installed_version.is_none() {
+        #[cfg(windows)]
+        unsafe {
+            use std::ffi::OsStr;
+            use std::os::windows::ffi::OsStrExt;
+            let msg: Vec<u16> = OsStr::new(
+                "RPWorld Launcher не установлен.\n\
+                 Сейчас будет скачан и установлен автоматически.\n\n\
+                 Нажмите OK чтобы продолжить.",
+            )
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+            let caption: Vec<u16> = OsStr::new("RPWorld Launcher")
+                .encode_wide()
+                .chain(Some(0))
+                .collect();
+            windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                0,
+                msg.as_ptr(),
+                caption.as_ptr(),
+                windows_sys::Win32::UI::WindowsAndMessaging::MB_OK
+                    | windows_sys::Win32::UI::WindowsAndMessaging::MB_ICONINFORMATION,
+            );
+        }
+    }
+
+    // ── 5. Download installer ──────────────────────────────────────────────────
     let temp_dir = std::env::temp_dir();
     let installer_path = temp_dir.join(&asset.name);
 
-    let bytes = match client.get(&asset.browser_download_url).send().and_then(|r| r.bytes()) {
+    let bytes = match client
+        .get(&asset.browser_download_url)
+        .send()
+        .and_then(|r| r.bytes())
+    {
         Ok(b) => b,
         Err(_) => {
-            show_error("Ошибка скачивания установщика.");
-            exit(1);
+            show_error("Ошибка скачивания обновления. Проверьте интернет-соединение.");
+            // Fallback: launch old version if available
+            if let Some(path) = launcher_path {
+                let _ = Command::new(&path).spawn();
+            }
+            exit(0);
         }
     };
 
     if std::fs::write(&installer_path, &bytes).is_err() {
-        show_error("Ошибка сохранения файла.");
-        exit(1);
+        show_error("Ошибка сохранения файла обновления.");
+        if let Some(path) = launcher_path {
+            let _ = Command::new(&path).spawn();
+        }
+        exit(0);
     }
 
-    // 6. Run installer silently
-    let _ = Command::new(&installer_path)
+    // ── 6. Run NSIS installer silently ────────────────────────────────────────
+    let status = Command::new(&installer_path)
         .args(["/S"])
         .spawn()
-        .and_then(|mut child| child.wait());
+        .and_then(|mut c| c.wait());
 
-    // 7. Try to launch installed app (give NSIS a moment to finish)
-    std::thread::sleep(std::time::Duration::from_millis(2500));
+    let _ = std::fs::remove_file(&installer_path);
+
+    // ── 7. Wait for NSIS to finish, then launch ───────────────────────────────
+    let wait_ms = if status.is_ok() { 3000 } else { 1000 };
+    std::thread::sleep(std::time::Duration::from_millis(wait_ms));
+
     if let Some(path) = find_launcher() {
         let _ = Command::new(&path).spawn();
     }
 }
 
-/// Find the installed launcher exe on disk.
-///
-/// Search order:
-///   1. HKCU registry key written by Tauri NSIS (`RPWorld Launcher`)
-///   2. Known default install path: %LOCALAPPDATA%\RPWorld Launcher\rpw-launcher.exe
-fn find_launcher() -> Option<PathBuf> {
-    // ── 1. Registry (most reliable) ───────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Read installed version from NSIS registry (DisplayVersion field).
+fn get_installed_version() -> Option<String> {
     #[cfg(windows)]
     {
         use winreg::enums::*;
         use winreg::RegKey;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(key) = hkcu.open_subkey(REG_KEY) {
+            if let Ok(ver) = key.get_value::<String, _>("DisplayVersion") {
+                let v = ver.trim().trim_start_matches('v').to_string();
+                if !v.is_empty() {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    None
+}
 
+/// Find the installed launcher exe on disk.
+fn find_launcher() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         if let Ok(key) = hkcu.open_subkey(REG_KEY) {
             if let Ok(raw) = key.get_value::<String, _>("InstallLocation") {
-                // NSIS stores the value with surrounding quotes → strip them
                 let dir = raw.trim_matches('"');
                 let exe = PathBuf::from(dir).join(EXE_NAME);
                 if exe.exists() {
@@ -159,23 +217,28 @@ fn find_launcher() -> Option<PathBuf> {
         }
     }
 
-    // ── 2. Fallback: default Tauri NSIS path ─────────────────────────────────
-    // Tauri NSIS with installMode="currentUser" installs to:
-    //   %LOCALAPPDATA%\<productName>\<binaryName>.exe
+    // Fallback: known default Tauri NSIS paths
     let candidates = [
-        // Primary: %LOCALAPPDATA%\RPWorld Launcher\rpw-launcher.exe
         dirs::data_local_dir().map(|d| d.join(INSTALL_DIR).join(EXE_NAME)),
-        // Secondary: some older Tauri versions use Programs sub-folder
         dirs::data_local_dir().map(|d| d.join("Programs").join(INSTALL_DIR).join(EXE_NAME)),
     ];
-
     for candidate in candidates.into_iter().flatten() {
         if candidate.exists() {
             return Some(candidate);
         }
     }
-
     None
+}
+
+/// Compare two version strings like "2.15.0" vs "2.11.0".
+fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    let parse = |v: &str| {
+        v.trim_start_matches('v')
+            .split('.')
+            .filter_map(|s| s.parse::<u32>().ok())
+            .collect::<Vec<_>>()
+    };
+    parse(a).cmp(&parse(b))
 }
 
 fn show_error(msg: &str) {

@@ -1,6 +1,6 @@
 [package]
 name = "rpw-stub"
-version = "2.4.0"
+version = "2.5.0"
 edition = "2021"
 description = "RPWorld Launcher Stub — checks install and launches or downloads the launcher"
 
