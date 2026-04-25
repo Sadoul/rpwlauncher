@@ -192,6 +192,9 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
     }
     const hoverId = findNavItemIdAt(event.clientX, event.clientY);
     setOverId(hoverId);
+    if (hoverId && hoverId !== state.id) {
+      reorder(state.id, hoverId);
+    }
   };
 
   const finishDrag = (event: React.PointerEvent<HTMLButtonElement>, commit: boolean) => {
@@ -200,8 +203,7 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
     if (!state) return;
     try { (event.currentTarget as HTMLButtonElement).releasePointerCapture(event.pointerId); } catch { /* ignore */ }
     if (state.started && commit) {
-      const targetId = findNavItemIdAt(event.clientX, event.clientY);
-      if (targetId) reorder(state.id, targetId);
+      // Order is already updated live during pointer move.
     }
     setDragId(null);
     setOverId(null);
