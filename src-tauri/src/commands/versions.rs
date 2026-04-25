@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 // ─── Minecraft version manifest ───────────────────────────────────────────────
 
@@ -234,7 +235,72 @@ async fn get_optifine_versions(mc_version: &str) -> Result<Vec<LoaderVersion>, S
     Err(format!("OptiFine не имеет известных версий для Minecraft {mc_version}. Проверьте https://optifine.net вручную."))
 }
 
-// ─── Install custom modpack ───────────────────────────────────────────────────
+// ─── Custom modpacks ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CustomModpackManifest {
+    pub name: String,
+    pub loader: String,
+    pub mc_version: String,
+    pub loader_version: String,
+    pub max_memory: u32,
+    pub jvm_args: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub game_dir: String,
+}
+
+fn custom_modpacks_root() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".rpworld")
+        .join("modpacks")
+}
+
+fn sanitize_modpack_dir_name(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+#[tauri::command]
+pub fn get_custom_modpacks() -> Result<Vec<CustomModpackManifest>, String> {
+    let root = custom_modpacks_root();
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut modpacks = Vec::new();
+    for entry in std::fs::read_dir(&root).map_err(|e| format!("Не удалось прочитать модпаки: {e}"))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let manifest_path = entry.path().join("modpack.json");
+        if manifest_path.exists() {
+            let text = std::fs::read_to_string(&manifest_path)
+                .map_err(|e| format!("Не удалось прочитать {}: {e}", manifest_path.display()))?;
+            if let Ok(manifest) = serde_json::from_str::<CustomModpackManifest>(&text) {
+                modpacks.push(manifest);
+            }
+        }
+    }
+    modpacks.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(modpacks)
+}
+
+#[tauri::command]
+pub fn delete_custom_modpack(name: String) -> Result<(), String> {
+    let dir_name = sanitize_modpack_dir_name(&name);
+    if dir_name.is_empty() {
+        return Err("Некорректное имя модпака".to_string());
+    }
+    let path = custom_modpacks_root().join(dir_name);
+    if path.exists() {
+        std::fs::remove_dir_all(&path)
+            .map_err(|e| format!("Не удалось удалить модпак: {e}"))?;
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn install_custom_modpack(
@@ -246,14 +312,14 @@ pub async fn install_custom_modpack(
     jvm_args: String,
 ) -> Result<(), String> {
     use std::fs;
-    use std::path::PathBuf;
+
+    let dir_name = sanitize_modpack_dir_name(&name);
+    if dir_name.is_empty() {
+        return Err("Введите корректное название модпака".to_string());
+    }
 
     // Create modpack directory
-    let modpacks_dir = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".rpworld")
-        .join("modpacks")
-        .join(&name);
+    let modpacks_dir = custom_modpacks_root().join(&dir_name);
 
     fs::create_dir_all(&modpacks_dir)
         .map_err(|e| format!("Не удалось создать папку модпака: {e}"))?;
@@ -267,6 +333,7 @@ pub async fn install_custom_modpack(
         "max_memory": max_memory,
         "jvm_args": jvm_args,
         "created_at": chrono::Utc::now().to_rfc3339(),
+        "game_dir": modpacks_dir.to_string_lossy(),
     });
 
     fs::write(

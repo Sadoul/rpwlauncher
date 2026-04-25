@@ -285,7 +285,7 @@ button { font-family: inherit; }
   background: linear-gradient(180deg, var(--accent), var(--accent-2));
   border-radius: 0 3px 3px 0;
 }
-.nav-item.locked { opacity: 0.32; cursor: not-allowed; pointer-events: none; }
+.nav-item.locked { opacity: 0.45; cursor: not-allowed; }
 .nav-icon { font-size: 16px; width: 18px; text-align: center; flex-shrink: 0; line-height: 1; }
 .nav-label { flex: 1; }
 .nav-lock { font-size: 10px; opacity: 0.7; }
@@ -295,6 +295,37 @@ button { font-family: inherit; }
   background: linear-gradient(180deg, var(--accent), var(--accent-2));
   border-radius: 0 3px 3px 0;
 }
+.sidebar-context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 156px;
+  padding: 6px;
+  border-radius: var(--r-sm);
+  background: var(--bg-glass-solid-h);
+  border: 1px solid var(--border-hover);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(var(--blur-heavy));
+  -webkit-backdrop-filter: blur(var(--blur-heavy));
+}
+.sidebar-context-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+.sidebar-context-item:hover:not(:disabled) { background: var(--bg-overlay); color: var(--accent); }
+.sidebar-context-item:disabled { opacity: 0.55; cursor: not-allowed; }
+.sidebar-context-item.danger { color: var(--accent-red); }
+.context-lock { display: inline-flex; opacity: 0.8; }
 
 /* Spacer */
 .sidebar-spacer { flex: 1; min-height: 12px; }
@@ -954,6 +985,7 @@ button { font-family: inherit; }
 .custom-panel {
   padding: 20px 22px; overflow-y: auto; flex: 1;
   position: relative; z-index: 1;
+  color: #fff;
 }
 .custom-panel h2 {
   font-size: 20px; font-weight: 700; margin-bottom: 18px;
@@ -963,32 +995,34 @@ button { font-family: inherit; }
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px;
 }
 .loader-card {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 12px 6px;
-  background: rgba(255,255,255,0.1);
-  border: 2px solid transparent;
+  display: flex; align-items: center; justify-content: center;
+  padding: 13px 8px;
+  background: rgba(5,8,14,0.72);
+  border: 2px solid rgba(255,255,255,0.18);
   border-radius: var(--r-sm);
   cursor: pointer;
-  color: rgba(255,255,255,0.75); font-size: 11px; font-weight: 600;
+  color: rgba(255,255,255,0.92); font-size: 12px; font-weight: 700;
   text-align: center;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.24);
   transition: all var(--ease);
 }
-.loader-card:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.loader-card:hover { background: rgba(15,20,30,0.86); color: #fff; }
 .loader-card.selected {
-  background: rgba(255,255,255,0.2); color: #fff;
+  background: rgba(20,24,34,0.92); color: #fff;
 }
-.loader-icon { font-size: 22px; }
+.loader-label { font-size: 12px; font-weight: 800; text-shadow: 0 1px 8px rgba(0,0,0,0.65); }
 
 .version-selects { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
 .version-select-group { display: flex; flex-direction: column; gap: 4px; }
 .version-select-label {
-  font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.55);
+  font-size: 10px; font-weight: 800; color: rgba(255,255,255,0.9);
   text-transform: uppercase; letter-spacing: 1px;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.7);
 }
 .version-select {
-  padding: 8px 10px; font-size: 12px;
-  color: #fff; background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.15);
+  padding: 9px 11px; font-size: 12px;
+  color: #fff; background: rgba(5,8,14,0.78);
+  border: 1px solid rgba(255,255,255,0.28);
   border-radius: var(--r-sm); outline: none; cursor: pointer;
   transition: all var(--ease);
 }
@@ -996,15 +1030,15 @@ button { font-family: inherit; }
 .version-select option { background: #0d1117; color: #fff; }
 
 .modpack-name-input {
-  width: 100%; padding: 9px 12px;
+  width: 100%; padding: 10px 12px;
   font-size: 13px; font-family: 'Inter', sans-serif;
-  color: #fff; background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.15);
+  color: #fff; background: rgba(5,8,14,0.78);
+  border: 1px solid rgba(255,255,255,0.28);
   border-radius: var(--r-sm); outline: none; margin-bottom: 12px;
   transition: border-color var(--ease);
 }
 .modpack-name-input:focus { border-color: var(--accent); }
-.modpack-name-input::placeholder { color: rgba(255,255,255,0.38); }
+.modpack-name-input::placeholder { color: rgba(255,255,255,0.66); }
 
 /* ══════════════════════════════════════════════════════════════
    UPDATE OVERLAY

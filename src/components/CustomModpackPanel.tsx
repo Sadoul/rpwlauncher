@@ -22,7 +22,11 @@ const LOADERS: { id: Loader; label: string; color: string }[] = [
   { id: "optifine", label: "OptiFine", color: "#2196A8" },
 ];
 
-export default function CustomModpackPanel() {
+interface CustomModpackPanelProps {
+  onInstalled?: () => void | Promise<void>;
+}
+
+export default function CustomModpackPanel({ onInstalled }: CustomModpackPanelProps) {
   const [loader, setLoader] = useState<Loader>("forge");
   const [mcVersions, setMcVersions] = useState<McVersion[]>([]);
   const [loaderVersions, setLoaderVersions] = useState<LoaderVersion[]>([]);
@@ -111,6 +115,7 @@ export default function CustomModpackPanel() {
       setInstallProgress(100);
       setInstallMsg("Готово!");
       setSuccess(true);
+      await onInstalled?.();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -158,8 +163,7 @@ export default function CustomModpackPanel() {
               whileTap={{ scale: 0.97 }}
               style={loader === l.id ? { borderColor: l.color, boxShadow: `0 0 14px ${l.color}55` } : {}}
             >
-              <div className="loader-icon" style={{ fontSize: 11, fontWeight: 700, color: l.color }}>{l.label[0]}</div>
-              <div>{l.label}</div>
+              <div className="loader-label" style={{ color: l.color }}>{l.label}</div>
             </motion.div>
           ))}
         </div>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Page } from "./Sidebar";
+import type { CustomModpack } from "../App";
 
 interface Account {
   username: string;
@@ -24,6 +25,7 @@ interface GamePanelProps {
   maxMemory: number;
   jvmArgs?: string;
   gpuMode?: string;
+  customModpacks?: CustomModpack[];
 }
 
 interface ModpackConfig {
@@ -59,7 +61,7 @@ const MODPACK_CONFIGS: Record<string, ModpackConfig> = {
   },
 };
 
-export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs = "", gpuMode = "auto" }: GamePanelProps) {
+export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs = "", gpuMode = "auto", customModpacks = [] }: GamePanelProps) {
   const [launching, setLaunching] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [progress, setProgress] = useState<LaunchProgress | null>(null);
@@ -68,7 +70,17 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const progressInterval = useRef<number | null>(null);
 
-  const config = MODPACK_CONFIGS[page] || MODPACK_CONFIGS.rpworld;
+  const customPackName = page.startsWith("custom:") ? page.slice("custom:".length) : null;
+  const customPack = customPackName ? customModpacks.find(pack => pack.name === customPackName) : null;
+  const config = customPack ? {
+    title: customPack.name,
+    description: `${customPack.loader.toUpperCase()} · Minecraft ${customPack.mc_version}${customPack.loader_version ? ` · ${customPack.loader_version}` : ""}`,
+    githubRepo: "",
+    modpackName: customPack.name,
+    defaultVersion: customPack.loader === "vanilla" ? customPack.mc_version : `${customPack.loader}-${customPack.mc_version}`,
+    mcVersion: customPack.mc_version,
+    bg: ["/backgrounds/custom.jpg"],
+  } : (MODPACK_CONFIGS[page] || MODPACK_CONFIGS.rpworld);
 
   // Pick a random background once per page mount
   const bgImage = useMemo(() => {
@@ -148,7 +160,7 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
     try {
       const { appLocalDataDir } = await import("@tauri-apps/api/path");
       const baseDir = await appLocalDataDir();
-      const gameDir = baseDir + "\\modpacks\\" + config.modpackName;
+      const gameDir = customPack?.game_dir || (baseDir + "\\modpacks\\" + config.modpackName);
 
       await invoke("launch_game", {
         username: account.username,
@@ -156,9 +168,9 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
         accessToken: account.access_token,
         version: config.defaultVersion,
         javaPath,
-        maxMemory,
+        maxMemory: customPack?.max_memory ?? maxMemory,
         gameDir,
-        jvmArgs,
+        jvmArgs: customPack?.jvm_args ?? jvmArgs,
         gpuMode,
       });
     } catch (err) {

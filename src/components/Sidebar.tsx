@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import type { CustomModpack } from "../App";
 
-export type Page = "rpworld" | "minigames" | "custom" | "settings";
+export type Page = "rpworld" | "minigames" | "custom" | "settings" | `custom:${string}`;
 
 interface SidebarProps {
   currentPage: Page;
@@ -9,6 +11,9 @@ interface SidebarProps {
   account: { username: string; account_type: string } | null;
   onLogout: () => void;
   avatarUrl: string | null;
+  customModpacks: CustomModpack[];
+  onConfigurePage: (page: Page) => void;
+  onDeleteCustomModpack: (name: string) => void;
 }
 
 // SVG icons — no emoji
@@ -57,7 +62,8 @@ const IconEject = () => (
   </svg>
 );
 
-type NavItem = { id: Page; label: string; icon: React.ReactElement; locked?: boolean };
+type NavItem = { id: Page; label: string; icon: React.ReactElement; locked?: boolean; customName?: string }; 
+type ContextMenuState = { x: number; y: number; item: NavItem } | null;
 
 const NAV_ITEMS: NavItem[] = [
   { id: "rpworld",   label: "RPWorld",      icon: <IconGlobe /> },
@@ -68,7 +74,25 @@ const NAV_ITEMS: NavItem[] = [
 
 const DISCORD_URL = "https://discord.gg/DnVNeBYzMM";
 
-export default function Sidebar({ currentPage, onPageChange, account, onLogout, avatarUrl }: SidebarProps) {
+export default function Sidebar({ currentPage, onPageChange, account, onLogout, avatarUrl, customModpacks, onConfigurePage, onDeleteCustomModpack }: SidebarProps) {
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+
+  const navItems: NavItem[] = [
+    ...NAV_ITEMS,
+    ...customModpacks.map((pack) => ({
+      id: `custom:${pack.name}` as Page,
+      label: pack.name,
+      icon: <IconBox />,
+      customName: pack.name,
+    })),
+  ];
+
+  const openContextMenu = (event: React.MouseEvent, item: NavItem) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (item.id === "settings") return;
+    setContextMenu({ x: event.clientX, y: event.clientY, item });
+  };
   const handleDiscord = async () => {
     try { await invoke("open_url", { url: DISCORD_URL }); } catch { window.open(DISCORD_URL, "_blank"); }
   };
@@ -90,11 +114,12 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
 
       {/* Navigation */}
       <nav className="sidebar-nav">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <motion.button
             key={item.id}
             className={`nav-item${currentPage === item.id ? " active" : ""}${item.locked ? " locked" : ""}`}
             onClick={() => !item.locked && onPageChange(item.id)}
+            onContextMenu={(event) => openContextMenu(event, item)}
             whileHover={item.locked ? {} : { x: 2 }}
             whileTap={item.locked ? {} : { scale: 0.97 }}
             layout
@@ -117,6 +142,41 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
           </motion.button>
         ))}
       </nav>
+
+      <AnimatePresence>
+        {contextMenu && (
+          <motion.div
+            className="sidebar-context-menu"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            onMouseLeave={() => setContextMenu(null)}
+          >
+            <button
+              className="sidebar-context-item"
+              onClick={() => {
+                onConfigurePage(contextMenu.item.id);
+                setContextMenu(null);
+              }}
+              disabled={contextMenu.item.id === "rpworld" || contextMenu.item.id === "minigames"}
+            >
+              Настроить {(contextMenu.item.id === "rpworld" || contextMenu.item.id === "minigames") && <span className="context-lock"><IconLock /></span>}
+            </button>
+            {contextMenu.item.customName && (
+              <button
+                className="sidebar-context-item danger"
+                onClick={() => {
+                  onDeleteCustomModpack(contextMenu.item.customName!);
+                  setContextMenu(null);
+                }}
+              >
+                Удалить
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="sidebar-spacer" />
 

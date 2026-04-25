@@ -35,6 +35,17 @@ interface UpdateInfo {
 
 type Theme = "light" | "dark";
 
+export interface CustomModpack {
+  name: string;
+  loader: string;
+  mc_version: string;
+  loader_version: string;
+  max_memory: number;
+  jvm_args: string;
+  created_at: string;
+  game_dir: string;
+}
+
 export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>("rpworld");
@@ -48,6 +59,7 @@ export default function App() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [notification, setNotification] = useState("");
   const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
+  const [customModpacks, setCustomModpacks] = useState<CustomModpack[]>([]);
 
   // useLayoutEffect runs synchronously before paint — ensures all CSS variables
   // change in the same frame, so background + widgets transition simultaneously
@@ -55,6 +67,12 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("rpw_theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    const preventDefaultContextMenu = (event: MouseEvent) => event.preventDefault();
+    window.addEventListener("contextmenu", preventDefaultContextMenu, { capture: true });
+    return () => window.removeEventListener("contextmenu", preventDefaultContextMenu, true);
+  }, []);
 
   useEffect(() => { initializeApp(); }, []);
 
@@ -73,6 +91,8 @@ export default function App() {
       if (savedJvmArgs) setJvmArgs(savedJvmArgs);
       if (savedGpuMode) setGpuMode(savedGpuMode);
       if (savedTheme === "dark" || savedTheme === "light") setTheme(savedTheme);
+
+      await loadCustomModpacks();
 
       const loggingEnabled = localStorage.getItem("rpw_logging") !== "false";
       try { await invoke("set_logging_enabled", { enabled: loggingEnabled }); } catch { /* ignore */ }
@@ -98,6 +118,25 @@ export default function App() {
       console.error("Init failed:", e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCustomModpacks = async () => {
+    try {
+      const list = await invoke<CustomModpack[]>("get_custom_modpacks");
+      setCustomModpacks(list);
+    } catch { /* ignore */ }
+  };
+
+  const deleteCustomModpack = async (name: string) => {
+    if (!confirm(`Удалить модпак «${name}»?`)) return;
+    try {
+      await invoke("delete_custom_modpack", { name });
+      await loadCustomModpacks();
+      setCurrentPage("rpworld");
+      showNotification(`Модпак «${name}» удалён`);
+    } catch (e) {
+      showNotification(String(e));
     }
   };
 
@@ -185,6 +224,13 @@ export default function App() {
           account={account}
           onLogout={handleLogout}
           avatarUrl={avatarUrl}
+          customModpacks={customModpacks}
+          onConfigurePage={(page) => {
+            if (page === "rpworld") showNotification("Настройка RPWorld пока недоступна");
+            else if (page === "minigames") showNotification("Мини-игры пока в разработке");
+            else if (page === "custom") setCurrentPage("custom");
+          }}
+          onDeleteCustomModpack={deleteCustomModpack}
         />
 
         <div className="content-area">
@@ -223,11 +269,12 @@ export default function App() {
                 />
               </motion.div>
             ) : currentPage === "custom" ? (
-              <CustomModpackPanel key="custom" />
+              <CustomModpackPanel key="custom" onInstalled={loadCustomModpacks} />
             ) : currentPage !== "settings" ? (
               <GamePanel
                 key={currentPage}
                 page={currentPage}
+                customModpacks={customModpacks}
                 account={account}
                 javaPath={javaPath}
                 maxMemory={maxMemory}

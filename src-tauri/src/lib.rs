@@ -31,6 +31,10 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.eval("window.addEventListener('contextmenu', event => event.preventDefault(), { capture: true });");
+            }
+
             // Explicitly set the taskbar/window icon at runtime.
             // tauri::include_image! decodes PNG at compile time into RGBA bytes.
             if let Some(window) = app.get_webview_window("main") {
@@ -62,6 +66,8 @@ pub fn run() {
             // Versions (custom modpacks)
             versions::get_mc_versions,
             versions::get_loader_versions,
+            versions::get_custom_modpacks,
+            versions::delete_custom_modpack,
             versions::install_custom_modpack,
             // Settings
             settings::save_avatar,
