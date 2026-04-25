@@ -212,6 +212,7 @@ export default function GamePanel({
   const handleCancel = async () => {
     setCancelling(true);
     try {
+      await invoke("cancel_launch");
       await invoke("cancel_download");
     } catch { /* ignore */ }
     setLaunching(false);

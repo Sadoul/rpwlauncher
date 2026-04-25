@@ -127,6 +127,7 @@ pub fn run() {
             launcher::launch_game,
             launcher::get_launch_progress,
             launcher::is_game_running,
+            launcher::cancel_launch,
             // Downloader
             downloader::download_modpack,
             downloader::get_download_progress,

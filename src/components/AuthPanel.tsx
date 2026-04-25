@@ -37,11 +37,13 @@ const ShieldIcon = () => (
   </svg>
 );
 
-const WifiOffIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none" />
-    <path d="M8.5 14.5a5 5 0 0 1 7 0" />
-    <path d="M5 11a10 10 0 0 1 14 0" />
+const OfflineBadgeIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="3" y="4" width="18" height="16" rx="5" stroke="currentColor" strokeWidth="1.7" />
+    <circle cx="9" cy="11" r="2.2" stroke="currentColor" strokeWidth="1.6" />
+    <path d="M5.8 18c.8-2.2 2-3.4 3.2-3.4s2.4 1.2 3.2 3.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <path d="M15 9.2h3.2M15 12h2.4M15 14.8h3.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <path d="M18.7 4.9l1.6-1.6M20.4 6.8l2-1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.8" />
   </svg>
 );
 
@@ -176,7 +178,7 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
             whileTap={{ scale: 0.99 }}
           >
             <div className="auth-method-icon offline-icon">
-              <WifiOffIcon />
+              <OfflineBadgeIcon />
             </div>
             <div className="auth-method-info">
               <span className="auth-method-name">Офлайн режим</span>

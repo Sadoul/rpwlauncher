@@ -35,6 +35,18 @@ struct GitHubContentResponse {
     sha: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct GitHubCommitFileResponse {
+    content: GitHubContentResponse,
+    commit: GitHubCommitInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubCommitInfo {
+    sha: String,
+    html_url: String,
+}
+
 fn get_config_dir() -> PathBuf {
     let dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -237,7 +249,17 @@ pub async fn commit_admin_accounts(
         return Err(format!("GitHub отклонил commit: {status}. {body}"));
     }
 
-    Ok("Пароли обновлены: commit отправлен в GitHub".to_string())
+    let updated: GitHubCommitFileResponse = update
+        .json()
+        .await
+        .map_err(|e| format!("Commit создан, но ответ GitHub не разобран: {e}"))?;
+
+    Ok(format!(
+        "Пароли обновлены. Commit: {}\n{}\nНовый SHA файла: {}",
+        updated.commit.sha,
+        updated.commit.html_url,
+        updated.content.sha
+    ))
 }
 
 #[tauri::command]

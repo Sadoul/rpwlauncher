@@ -18,6 +18,7 @@ const GAME_LOG_TAIL_LINES: usize = 120;
 
 static LAUNCH_PROGRESS: Mutex<Option<LaunchProgress>> = Mutex::new(None);
 static GAME_RUNNING: AtomicBool = AtomicBool::new(false);
+static LAUNCH_CANCELLED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LaunchProgress {
@@ -681,6 +682,19 @@ pub fn is_game_running() -> bool {
 }
 
 #[tauri::command]
+pub fn cancel_launch() {
+    log("[launch] Cancel requested by user");
+    LAUNCH_CANCELLED.store(true, Ordering::SeqCst);
+}
+
+fn check_launch_cancelled() -> Result<(), String> {
+    if LAUNCH_CANCELLED.load(Ordering::SeqCst) {
+        return Err("Запуск Minecraft отменён".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn launch_game(
     username: String,
     uuid: String,
@@ -695,6 +709,7 @@ pub async fn launch_game(
     close_launcher_on_game_start: Option<bool>,
     reopen_launcher_after_game_close: Option<bool>,
 ) -> Result<String, String> {
+    LAUNCH_CANCELLED.store(false, Ordering::SeqCst);
     log(&format!("=== Launch requested: version={}, user={}", version, username));
 
     if !allow_multiple_instances.unwrap_or(false) && is_game_running() {
@@ -755,6 +770,7 @@ pub async fn launch_game(
         version.clone()
     };
 
+    check_launch_cancelled()?;
     log(&format!("[launch] Using version ID: {}", actual_version));
 
     // ── Load version JSON ───────────────────────────────────────────────────
@@ -1079,6 +1095,7 @@ pub async fn launch_game(
     log(&format!("[launch] Total args: {}", args.len()));
     log(&format!("[launch] First 10 args: {:?}", &args[..args.len().min(10)]));
 
+    check_launch_cancelled()?;
     set_progress("launch", 1.0, 1.0, "Запуск игры...");
 
     let logs_dir = mc_dir.join("logs");
@@ -1121,6 +1138,10 @@ pub async fn launch_game(
     log("[launch] Game process spawned successfully");
 
     for _ in 0..GAME_EARLY_EXIT_CHECK_SECONDS {
+        if LAUNCH_CANCELLED.load(Ordering::SeqCst) {
+            let _ = child.kill();
+            return Err("Запуск Minecraft отменён".to_string());
+        }
         std::thread::sleep(Duration::from_secs(1));
         match child.try_wait() {
             Ok(Some(status)) => {
