@@ -117,6 +117,8 @@ pub fn run() {
             auth::login_offline,
             auth::login_microsoft,
             auth::get_saved_account,
+            auth::get_admin_accounts,
+            auth::encrypt_admin_accounts,
             auth::logout,
             // Launcher
             launcher::launch_game,

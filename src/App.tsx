@@ -9,12 +9,14 @@ import GamePanel from "./components/GamePanel";
 import SettingsPanel from "./components/SettingsPanel";
 import CustomModpackPanel from "./components/CustomModpackPanel";
 import UpdateOverlay from "./components/UpdateOverlay";
+import AdminPanel from "./components/AdminPanel";
 
 interface Account {
   username: string;
   uuid: string;
   access_token: string;
   account_type: string;
+  is_admin?: boolean;
 }
 
 interface JavaInfo {
@@ -297,6 +299,17 @@ export default function App() {
                   onThemeChange={setTheme}
                   onAvatarChange={setAvatarUrl}
                 />
+              </motion.div>
+            ) : currentPage === "admin" && account?.is_admin ? (
+              <motion.div
+                key="admin"
+                className="game-panel"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <AdminPanel username={account.username} />
               </motion.div>
             ) : currentPage === "custom" ? (
               <CustomModpackPanel key="custom" onInstalled={loadCustomModpacks} />

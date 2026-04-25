@@ -908,6 +908,39 @@ button { font-family: inherit; }
 .setting-toggle-copy { display: flex; flex-direction: column; gap: 2px; }
 .setting-toggle-title { font-size: 13px; font-weight: 700; color: var(--text); }
 .setting-toggle-desc { font-size: 11px; color: var(--text-muted); line-height: 1.35; }
+.admin-panel { padding: 24px; overflow-y: auto; }
+.admin-note, .admin-message {
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: var(--r-sm);
+  background: rgba(0,0,0,0.36);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.admin-account-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.admin-account-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: rgba(0,0,0,0.28);
+  border: 1px solid var(--border);
+}
+.admin-account-name { font-weight: 800; color: var(--text); }
+.admin-password-input, .admin-encrypted-output {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.42);
+  color: var(--text);
+  outline: none;
+}
+.admin-encrypted-output { min-height: 120px; margin-top: 12px; font-family: 'Cascadia Code', monospace; font-size: 11px; resize: vertical; }
 
 /* Settings buttons */
 .settings-btn {

@@ -76,6 +76,7 @@ const itemVariants = {
 export default function AuthPanel({ onLogin }: AuthPanelProps) {
   const [selectedMethod, setSelectedMethod] = useState<"offline" | "microsoft" | null>(null);
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -96,7 +97,7 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
     setLoading(true);
     setError("");
     try {
-      const account = await invoke<Account>("login_offline", { username: username.trim() });
+      const account = await invoke<Account>("login_offline", { username: username.trim(), password });
       onLogin(account);
     } catch (err) {
       setError(String(err));
@@ -236,6 +237,19 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
                     autoFocus
                   />
                 </div>
+                <div className="auth-input-wrap" style={{ marginTop: 10 }}>
+                  <div className="auth-input-icon">
+                    <ShieldIcon />
+                  </div>
+                  <input
+                    type="password"
+                    className="auth-modal-input"
+                    placeholder="Пароль аккаунта..."
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleOfflineLogin()}
+                  />
+                </div>
 
                 <AnimatePresence>
                   {error && (
@@ -253,7 +267,7 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
                 <motion.button
                   className="auth-modal-submit"
                   onClick={handleOfflineLogin}
-                  disabled={loading || !username.trim()}
+                  disabled={loading || !username.trim() || !password.trim()}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >

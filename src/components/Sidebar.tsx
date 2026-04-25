@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import type { CustomModpack } from "../App";
 
-export type Page = "rpworld" | "minigames" | "custom" | "settings" | `custom:${string}`;
+export type Page = "rpworld" | "minigames" | "custom" | "settings" | "admin" | `custom:${string}`;
 
 interface SidebarProps {
   currentPage: Page;
@@ -79,6 +79,7 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
 
   const navItems: NavItem[] = [
     ...NAV_ITEMS,
+    ...(account?.username === "Sadoul" ? [{ id: "admin" as Page, label: "Админ", icon: <IconSettings /> }] : []),
     ...customModpacks.map((pack) => ({
       id: `custom:${pack.name}` as Page,
       label: pack.name,
