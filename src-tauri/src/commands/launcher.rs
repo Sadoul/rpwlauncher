@@ -359,6 +359,33 @@ fn tail_lines(output: &str, max_lines: usize) -> String {
     lines.join("\n")
 }
 
+/// On Windows, replace java.exe with javaw.exe so no console window appears.
+/// javaw is the windowless Java launcher — identical to java but without the
+/// console subsystem, so no black window pops up during installer execution.
+#[cfg(windows)]
+fn javaw_path(java_path: &str) -> String {
+    // Replace only the filename, keep the rest of the path intact
+    let p = std::path::Path::new(java_path);
+    let javaw = if java_path.to_lowercase().ends_with("java.exe") {
+        p.with_file_name("javaw.exe")
+    } else if java_path.to_lowercase().ends_with("java") {
+        p.with_file_name("javaw")
+    } else {
+        p.to_path_buf()
+    };
+    // Only use javaw if it actually exists next to java
+    if javaw.exists() {
+        javaw.to_string_lossy().to_string()
+    } else {
+        java_path.to_string()
+    }
+}
+
+#[cfg(not(windows))]
+fn javaw_path(java_path: &str) -> String {
+    java_path.to_string()
+}
+
 /// Run Forge or NeoForge installer and return the installed version ID
 async fn run_modded_installer(
     client: &reqwest::Client,
@@ -396,7 +423,12 @@ async fn run_modded_installer(
         mc_dir.display()
     ));
 
-    let mut installer_cmd = tokio::process::Command::new(java_path);
+    // Use javaw.exe on Windows (windowless Java launcher) to avoid console popup.
+    // CREATE_NO_WINDOW is kept as an extra safeguard.
+    let java_exe = javaw_path(java_path);
+    log(&format!("[{}] Java executable for installer: {}", loader, java_exe));
+
+    let mut installer_cmd = tokio::process::Command::new(&java_exe);
     installer_cmd
         .args([
             "-Djava.awt.headless=true",
@@ -404,7 +436,10 @@ async fn run_modded_installer(
             installer_path.to_str().unwrap_or_default(),
             "--installClient",
         ])
-        .current_dir(mc_dir);
+        .current_dir(mc_dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
 
     #[cfg(windows)]
     installer_cmd.creation_flags(CREATE_NO_WINDOW);
