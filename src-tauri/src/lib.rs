@@ -3,6 +3,17 @@ mod commands;
 use commands::{auth, downloader, java, launcher, logger, settings, updater, versions};
 use tauri::Manager;
 
+#[cfg(windows)]
+fn set_windows_app_user_model_id() {
+    use windows::core::HSTRING;
+    use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+
+    let app_id = HSTRING::from("com.rpworld.launcher");
+    unsafe {
+        let _ = SetCurrentProcessExplicitAppUserModelID(&app_id);
+    }
+}
+
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| format!("Не удалось открыть URL: {e}"))
@@ -10,6 +21,9 @@ fn open_url(url: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    set_windows_app_user_model_id();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

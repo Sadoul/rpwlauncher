@@ -870,7 +870,12 @@ pub async fn launch_game(
 
     log(&format!("[launch] Libraries: {} total, {} skipped by rules, {} downloaded", total_libs, skipped, downloaded));
 
-    classpath_entries.push(client_jar_path.to_string_lossy().to_string());
+    let uses_bootstrap_launcher = version_info.main_class.contains("BootstrapLauncher");
+    if uses_bootstrap_launcher && version_info.inherits_from.is_some() {
+        log("[launch] Skipping inherited vanilla client jar in classpath for Forge/NeoForge module launch");
+    } else {
+        classpath_entries.push(client_jar_path.to_string_lossy().to_string());
+    }
     log(&format!("[launch] Classpath entries: {}", classpath_entries.len()));
 
     // ── Download assets ─────────────────────────────────────────────────────
