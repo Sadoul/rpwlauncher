@@ -101,39 +101,6 @@ fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
     parse(a).cmp(&parse(b))
 }
 
-/// Find the installed launcher exe using registry (same logic as stub).
-fn find_installed_exe() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        use winreg::enums::*;
-        use winreg::RegKey;
-
-        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        if let Ok(key) = hkcu.open_subkey(
-            r"Software\Microsoft\Windows\CurrentVersion\Uninstall\RPWorld Launcher",
-        ) {
-            if let Ok(raw) = key.get_value::<String, _>("InstallLocation") {
-                let dir = raw.trim_matches('"');
-                let exe = PathBuf::from(dir).join("rpw-launcher.exe");
-                if exe.exists() {
-                    return Some(exe);
-                }
-            }
-        }
-    }
-    // Fallback
-    let candidates = [
-        dirs::data_local_dir().map(|d| d.join("RPWorld Launcher").join("rpw-launcher.exe")),
-        dirs::data_local_dir()
-            .map(|d| d.join("Programs").join("RPWorld Launcher").join("rpw-launcher.exe")),
-    ];
-    for c in candidates.into_iter().flatten() {
-        if c.exists() {
-            return Some(c);
-        }
-    }
-    None
-}
 
 #[tauri::command]
 pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
@@ -320,45 +287,23 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
 fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), String> {
     let installer_str = installer.to_string_lossy().to_string();
 
-    // Known install dir — used as a fallback if registry read fails post-install
-    // Tauri NSIS currentUser: %LOCALAPPDATA%\RPWorld Launcher\rpw-launcher.exe
-    let install_dir = find_installed_exe()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-        .unwrap_or_else(|| {
-            dirs::data_local_dir()
-                .unwrap_or_default()
-                .join("RPWorld Launcher")
-        });
-    let launch_exe = install_dir.join("rpw-launcher.exe");
-    let launch_str = launch_exe.to_string_lossy().to_string();
-
     let batch_path = std::env::temp_dir().join("rpw_nsis_update.bat");
 
     // Batch script steps:
     //  1. Force-kill any remaining rpw-launcher.exe processes (WebView2 may still hold the lock)
     //  2. Wait 2 s for OS to release file locks
     //  3. Run NSIS installer silently
-    //  4. Wait 8 s (NSIS can take a while; give it plenty of time)
-    //  5. Launch the freshly installed exe from the known path
-    //  6. Self-delete
+    //  4. Let NSIS POSTINSTALL hook launch the app exactly once
+    //  5. Self-delete
     let batch = format!(
         "@echo off\r\n\
          taskkill /IM rpw-launcher.exe /F >nul 2>&1\r\n\
          taskkill /IM WebView2Manager.exe /F >nul 2>&1\r\n\
          timeout /t 2 /nobreak >nul\r\n\
          \"{installer}\" /S\r\n\
-         timeout /t 8 /nobreak >nul\r\n\
-         if exist \"{launcher}\" (\r\n\
-           start \"\" \"{launcher}\"\r\n\
-         ) else (\r\n\
-           for /f \"usebackq tokens=2,*\" %%A in (`reg query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RPWorld Launcher\" /v InstallLocation 2^>nul`) do (\r\n\
-             start \"\" \"%%B\\rpw-launcher.exe\"\r\n\
-           )\r\n\
-         )\r\n\
          del \"{installer}\"\r\n\
          (goto) 2>nul & del \"%~f0\"\r\n",
         installer = installer_str,
-        launcher = launch_str,
     );
 
     fs::write(&batch_path, batch.as_bytes()).map_err(|e| e.to_string())?;

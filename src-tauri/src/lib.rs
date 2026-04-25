@@ -22,7 +22,7 @@ fn force_windows_taskbar_icon(window: &tauri::WebviewWindow) {
     use std::path::PathBuf;
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        LoadImageW, SendMessageW, IMAGE_ICON, LR_DEFAULTSIZE, LR_LOADFROMFILE, WM_SETICON,
+        LoadImageW, SendMessageW, IMAGE_ICON, LR_LOADFROMFILE, WM_SETICON,
     };
 
     let Ok(handle) = window.window_handle() else { return; };
@@ -52,9 +52,9 @@ fn force_windows_taskbar_icon(window: &tauri::WebviewWindow) {
             None,
             windows::core::PCWSTR(icon_path_wide.as_ptr()),
             IMAGE_ICON,
-            16,
-            16,
-            LR_LOADFROMFILE | LR_DEFAULTSIZE,
+            64,
+            64,
+            LR_LOADFROMFILE,
         );
         if let Ok(icon) = hicon_small {
             SendMessageW(hwnd, WM_SETICON, WPARAM(0), LPARAM(icon.0 as isize));
