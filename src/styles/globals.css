@@ -286,6 +286,17 @@ button { font-family: inherit; }
   border-radius: 0 3px 3px 0;
 }
 .nav-item.locked { opacity: 0.45; cursor: not-allowed; }
+.nav-item:not(.locked):active { cursor: grabbing; }
+.nav-item.dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+  background: var(--bg-glass-hover);
+}
+.nav-item.drag-over {
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+  background: var(--accent-glow);
+}
 .nav-icon { font-size: 16px; width: 18px; text-align: center; flex-shrink: 0; line-height: 1; }
 .nav-label { flex: 1; }
 .nav-lock { font-size: 10px; opacity: 0.7; }

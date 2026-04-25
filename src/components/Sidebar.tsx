@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import type { CustomModpack } from "../App";
+
+const NAV_ORDER_STORAGE_KEY = "rpw_nav_order";
 
 export type Page = "rpworld" | "minigames" | "custom" | "settings" | "admin" | `custom:${string}`;
 
@@ -76,17 +78,94 @@ const DISCORD_URL = "https://discord.gg/DnVNeBYzMM";
 
 export default function Sidebar({ currentPage, onPageChange, account, onLogout, avatarUrl, customModpacks, onConfigurePage, onDeleteCustomModpack }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [navOrder, setNavOrder] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(NAV_ORDER_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
-  const navItems: NavItem[] = [
-    ...NAV_ITEMS,
-    ...(account?.username === "Sadoul" ? [{ id: "admin" as Page, label: "Админ", icon: <IconSettings /> }] : []),
-    ...customModpacks.map((pack) => ({
-      id: `custom:${pack.name}` as Page,
-      label: pack.name,
-      icon: <IconBox />,
-      customName: pack.name,
-    })),
-  ];
+  const baseNavItems: NavItem[] = useMemo(
+    () => [
+      ...NAV_ITEMS,
+      ...(account?.username === "Sadoul"
+        ? [{ id: "admin" as Page, label: "Админ", icon: <IconSettings /> }]
+        : []),
+      ...customModpacks.map((pack) => ({
+        id: `custom:${pack.name}` as Page,
+        label: pack.name,
+        icon: <IconBox />,
+        customName: pack.name,
+      })),
+    ],
+    [account?.username, customModpacks],
+  );
+
+  const navItems: NavItem[] = useMemo(() => {
+    if (navOrder.length === 0) return baseNavItems;
+    const byId = new Map(baseNavItems.map((item) => [item.id, item]));
+    const ordered: NavItem[] = [];
+    for (const id of navOrder) {
+      const found = byId.get(id as Page);
+      if (found) {
+        ordered.push(found);
+        byId.delete(id as Page);
+      }
+    }
+    return [...ordered, ...byId.values()];
+  }, [baseNavItems, navOrder]);
+
+  useEffect(() => {
+    if (navOrder.length === 0) return;
+    const valid = new Set(baseNavItems.map((item) => item.id as string));
+    const filtered = navOrder.filter((id) => valid.has(id));
+    if (filtered.length !== navOrder.length) {
+      setNavOrder(filtered);
+      try { localStorage.setItem(NAV_ORDER_STORAGE_KEY, JSON.stringify(filtered)); } catch { /* ignore */ }
+    }
+  }, [baseNavItems, navOrder]);
+
+  const persistOrder = (items: NavItem[]) => {
+    const order = items.map((item) => item.id as string);
+    setNavOrder(order);
+    try { localStorage.setItem(NAV_ORDER_STORAGE_KEY, JSON.stringify(order)); } catch { /* ignore */ }
+  };
+
+  const handleDragStart = (event: React.DragEvent<HTMLButtonElement>, id: string) => {
+    setDragId(id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", id);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLButtonElement>, id: string) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (overId !== id) setOverId(id);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLButtonElement>, targetId: string) => {
+    event.preventDefault();
+    const sourceId = dragId ?? event.dataTransfer.getData("text/plain");
+    setDragId(null);
+    setOverId(null);
+    if (!sourceId || sourceId === targetId) return;
+    const sourceIndex = navItems.findIndex((item) => item.id === sourceId);
+    const targetIndex = navItems.findIndex((item) => item.id === targetId);
+    if (sourceIndex === -1 || targetIndex === -1) return;
+    const next = navItems.slice();
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    persistOrder(next);
+  };
+
+  const handleDragEnd = () => {
+    setDragId(null);
+    setOverId(null);
+  };
 
   const openContextMenu = (event: React.MouseEvent, item: NavItem) => {
     event.preventDefault();
@@ -118,12 +197,17 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
         {navItems.map((item) => (
           <motion.button
             key={item.id}
-            className={`nav-item${currentPage === item.id ? " active" : ""}${item.locked ? " locked" : ""}`}
+            className={`nav-item${currentPage === item.id ? " active" : ""}${item.locked ? " locked" : ""}${dragId === item.id ? " dragging" : ""}${overId === item.id && dragId && dragId !== item.id ? " drag-over" : ""}`}
             onClick={() => !item.locked && onPageChange(item.id)}
             onContextMenu={(event) => openContextMenu(event, item)}
-            whileHover={item.locked ? {} : { x: 2 }}
+            whileHover={item.locked || dragId ? {} : { x: 2 }}
             whileTap={item.locked ? {} : { scale: 0.97 }}
             layout
+            draggable
+            onDragStart={(event) => handleDragStart(event as unknown as React.DragEvent<HTMLButtonElement>, item.id as string)}
+            onDragOver={(event) => handleDragOver(event as unknown as React.DragEvent<HTMLButtonElement>, item.id as string)}
+            onDrop={(event) => handleDrop(event as unknown as React.DragEvent<HTMLButtonElement>, item.id as string)}
+            onDragEnd={handleDragEnd}
           >
             <span className="nav-icon">{item.icon}</span>
             <span className="nav-label">{item.label}</span>

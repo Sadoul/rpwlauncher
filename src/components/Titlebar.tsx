@@ -25,15 +25,8 @@ export default function Titlebar({ theme, onThemeToggle }: TitlebarProps) {
 
   return (
     <div className="titlebar" data-tauri-drag-region>
-      {/* Left: launcher icon only */}
-      <div className="titlebar-brand" data-tauri-drag-region>
-        <img
-          src="/icons/launcher.png"
-          alt="RPWorld"
-          className="titlebar-icon"
-          draggable={false}
-        />
-      </div>
+      {/* Left: empty drag region (icon removed to avoid duplicate logo) */}
+      <div className="titlebar-brand" data-tauri-drag-region />
 
       {/* Right: theme toggle + window controls */}
       <div className="titlebar-buttons">
