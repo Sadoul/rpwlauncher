@@ -15,11 +15,11 @@ interface LoaderVersion {
 type Loader = "vanilla" | "forge" | "neoforge" | "fabric" | "optifine";
 
 const LOADERS: { id: Loader; label: string; color: string }[] = [
-  { id: "vanilla",  label: "Vanilla",  color: "#5C8A3C" },
-  { id: "forge",    label: "Forge",    color: "#CF6C2C" },
-  { id: "neoforge", label: "NeoForge", color: "#7B4FCC" },
-  { id: "fabric",   label: "Fabric",   color: "#B8860B" },
-  { id: "optifine", label: "OptiFine", color: "#2196A8" },
+  { id: "vanilla",  label: "Vanilla",  color: "#7CE38B" },
+  { id: "forge",    label: "Forge",    color: "#FF8A4C" },
+  { id: "neoforge", label: "NeoForge", color: "#A78BFA" },
+  { id: "fabric",   label: "Fabric",   color: "#FFD27A" },
+  { id: "optifine", label: "OptiFine", color: "#5EE9FF" },
 ];
 
 interface CustomModpackPanelProps {
@@ -163,7 +163,13 @@ export default function CustomModpackPanel({ onInstalled }: CustomModpackPanelPr
                 onClick={() => { setLoader(l.id); setError(""); }}
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.97 }}
-                style={loader === l.id ? { borderColor: l.color, boxShadow: `0 0 14px ${l.color}55` } : {}}
+                style={loader === l.id
+                  ? {
+                      borderColor: l.color,
+                      boxShadow: `0 0 0 1px ${l.color}66, 0 8px 28px ${l.color}33`,
+                      background: `linear-gradient(135deg, ${l.color}26, rgba(255,255,255,0.06))`,
+                    }
+                  : { borderColor: `${l.color}40` }}
               >
                 <div className="loader-label" style={{ color: l.color }}>{l.label}</div>
               </motion.div>

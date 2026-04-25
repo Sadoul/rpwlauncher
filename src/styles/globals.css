@@ -1139,30 +1139,29 @@ button { font-family: inherit; }
   align-items: center;
   justify-content: center;
   padding: 14px 10px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: 12px;
   cursor: pointer;
-  color: rgba(255,255,255,0.88);
+  color: rgba(255,255,255,0.92);
   font-size: 13px;
   font-weight: 700;
   text-align: center;
-  letter-spacing: 0.2px;
-  transition: background var(--ease), border-color var(--ease), transform var(--ease);
+  letter-spacing: 0.3px;
+  transition: background var(--ease), border-color var(--ease), transform var(--ease), box-shadow var(--ease);
 }
 .loader-card:hover {
-  background: rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.08);
   border-color: rgba(255,255,255,0.22);
 }
 .loader-card.selected {
-  background: rgba(255,255,255,0.14);
-  border-color: rgba(255,255,255,0.45);
   color: #fff;
 }
 .loader-label {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.45);
 }
 
 .snapshot-toggle {
