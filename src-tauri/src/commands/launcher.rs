@@ -1165,19 +1165,48 @@ pub async fn launch_game(
     }
 
     let exe = std::env::current_exe().ok();
+
+    if should_close_launcher {
+        if should_reopen_launcher {
+            if let Some(exe_path) = exe {
+                let game_pid = child.id();
+                log(&format!("[launch] Starting external game watcher for PID {}", game_pid));
+                #[cfg(windows)]
+                {
+                    let script = format!(
+                        "Wait-Process -Id {}; Start-Process -FilePath '{}'",
+                        game_pid,
+                        exe_path.to_string_lossy().replace('\'', "''")
+                    );
+                    let mut watcher = Command::new("powershell.exe");
+                    watcher
+                        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", &script])
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
+                    use std::os::windows::process::CommandExt;
+                    watcher.creation_flags(CREATE_NO_WINDOW);
+                    if let Err(e) = watcher.spawn() {
+                        log(&format!("[launch] Failed to start external watcher: {}", e));
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                        let _ = Command::new(exe_path).spawn();
+                    });
+                    std::thread::sleep(Duration::from_millis(300));
+                }
+            }
+        }
+        std::process::exit(0);
+    }
+
     std::thread::spawn(move || {
         let _ = child.wait();
         GAME_RUNNING.store(false, Ordering::SeqCst);
-        if should_close_launcher && should_reopen_launcher {
-            if let Some(path) = exe {
-                let _ = Command::new(path).spawn();
-            }
-        }
     });
-
-    if should_close_launcher {
-        std::process::exit(0);
-    }
 
     Ok("Game launched successfully".to_string())
 }
