@@ -293,16 +293,12 @@ fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), S
     let batch_path = std::env::temp_dir().join("rpw_nsis_update.bat");
 
     // Batch script steps:
-    //  1. Force-kill any remaining rpw-launcher.exe processes (WebView2 may still hold the lock)
-    //  2. Wait 2 s for OS to release file locks
-    //  3. Run NSIS installer silently
-    //  4. Let NSIS POSTINSTALL hook launch the app exactly once
-    //  5. Self-delete
+    //  1. Wait for parent process (this app) to exit cleanly
+    //  2. Run NSIS installer silently
+    //  3. Self-delete
     let batch = format!(
         "@echo off\r\n\
-         taskkill /IM rpw-launcher.exe /F >nul 2>&1\r\n\
-         taskkill /IM WebView2Manager.exe /F >nul 2>&1\r\n\
-         timeout /t 2 /nobreak >nul\r\n\
+         timeout /t 3 /nobreak >nul\r\n\
          \"{installer}\" /S\r\n\
          del \"{installer}\"\r\n\
          exit\r\n",
@@ -317,7 +313,7 @@ fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), S
         .map_err(|e| e.to_string())?;
 
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
         app.exit(0);
     });
 
