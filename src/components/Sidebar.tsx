@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import type { CustomModpack } from "../App";
@@ -135,23 +135,17 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
     try { localStorage.setItem(NAV_ORDER_STORAGE_KEY, JSON.stringify(order)); } catch { /* ignore */ }
   };
 
-  const handleDragStart = (event: React.DragEvent<HTMLButtonElement>, id: string) => {
-    setDragId(id);
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", id);
-  };
+  // Pointer-based drag (works inside Tauri WebView reliably)
+  const dragStateRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    started: boolean;
+    pointerId: number;
+  } | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
 
-  const handleDragOver = (event: React.DragEvent<HTMLButtonElement>, id: string) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    if (overId !== id) setOverId(id);
-  };
-
-  const handleDrop = (event: React.DragEvent<HTMLButtonElement>, targetId: string) => {
-    event.preventDefault();
-    const sourceId = dragId ?? event.dataTransfer.getData("text/plain");
-    setDragId(null);
-    setOverId(null);
+  const reorder = (sourceId: string, targetId: string) => {
     if (!sourceId || sourceId === targetId) return;
     const sourceIndex = navItems.findIndex((item) => item.id === sourceId);
     const targetIndex = navItems.findIndex((item) => item.id === targetId);
@@ -162,10 +156,59 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
     persistOrder(next);
   };
 
-  const handleDragEnd = () => {
+  const findNavItemIdAt = (x: number, y: number): string | null => {
+    if (!navRef.current) return null;
+    for (const child of Array.from(navRef.current.children)) {
+      const el = child as HTMLElement;
+      const rect = el.getBoundingClientRect();
+      if (y >= rect.top && y <= rect.bottom && x >= rect.left && x <= rect.right) {
+        return el.dataset.navId ?? null;
+      }
+    }
+    return null;
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>, id: string) => {
+    if (event.button !== 0 || event.pointerType === "touch") return;
+    dragStateRef.current = {
+      id,
+      startX: event.clientX,
+      startY: event.clientY,
+      started: false,
+      pointerId: event.pointerId,
+    };
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const state = dragStateRef.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    if (!state.started) {
+      const dx = event.clientX - state.startX;
+      const dy = event.clientY - state.startY;
+      if (dx * dx + dy * dy < 25) return; // threshold ~5px
+      state.started = true;
+      setDragId(state.id);
+      try { (event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId); } catch { /* ignore */ }
+    }
+    const hoverId = findNavItemIdAt(event.clientX, event.clientY);
+    setOverId(hoverId);
+  };
+
+  const finishDrag = (event: React.PointerEvent<HTMLButtonElement>, commit: boolean) => {
+    const state = dragStateRef.current;
+    dragStateRef.current = null;
+    if (!state) return;
+    try { (event.currentTarget as HTMLButtonElement).releasePointerCapture(event.pointerId); } catch { /* ignore */ }
+    if (state.started && commit) {
+      const targetId = findNavItemIdAt(event.clientX, event.clientY);
+      if (targetId) reorder(state.id, targetId);
+    }
     setDragId(null);
     setOverId(null);
   };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => finishDrag(event, true);
+  const handlePointerCancel = (event: React.PointerEvent<HTMLButtonElement>) => finishDrag(event, false);
 
   const openContextMenu = (event: React.MouseEvent, item: NavItem) => {
     event.preventDefault();
@@ -193,21 +236,25 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
       </div>
 
       {/* Navigation */}
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" ref={navRef as React.Ref<HTMLElement>}>
         {navItems.map((item) => (
           <motion.button
             key={item.id}
+            data-nav-id={item.id}
             className={`nav-item${currentPage === item.id ? " active" : ""}${item.locked ? " locked" : ""}${dragId === item.id ? " dragging" : ""}${overId === item.id && dragId && dragId !== item.id ? " drag-over" : ""}`}
-            onClick={() => !item.locked && onPageChange(item.id)}
+            onClick={() => {
+              if (dragId) return; // suppress click after drag
+              if (!item.locked) onPageChange(item.id);
+            }}
             onContextMenu={(event) => openContextMenu(event, item)}
             whileHover={item.locked || dragId ? {} : { x: 2 }}
-            whileTap={item.locked ? {} : { scale: 0.97 }}
+            whileTap={item.locked || dragId ? {} : { scale: 0.97 }}
             layout
-            draggable
-            onDragStart={(event) => handleDragStart(event as unknown as React.DragEvent<HTMLButtonElement>, item.id as string)}
-            onDragOver={(event) => handleDragOver(event as unknown as React.DragEvent<HTMLButtonElement>, item.id as string)}
-            onDrop={(event) => handleDrop(event as unknown as React.DragEvent<HTMLButtonElement>, item.id as string)}
-            onDragEnd={handleDragEnd}
+            onPointerDown={(event) => handlePointerDown(event as unknown as React.PointerEvent<HTMLButtonElement>, item.id as string)}
+            onPointerMove={(event) => handlePointerMove(event as unknown as React.PointerEvent<HTMLButtonElement>)}
+            onPointerUp={(event) => handlePointerUp(event as unknown as React.PointerEvent<HTMLButtonElement>)}
+            onPointerCancel={(event) => handlePointerCancel(event as unknown as React.PointerEvent<HTMLButtonElement>)}
+            style={{ touchAction: "none" }}
           >
             <span className="nav-icon">{item.icon}</span>
             <span className="nav-label">{item.label}</span>
