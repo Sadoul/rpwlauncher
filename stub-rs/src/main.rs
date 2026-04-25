@@ -11,9 +11,6 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod token;
-use token::GITHUB_TOKEN;
-
 use std::path::PathBuf;
 use std::process::{Command, exit};
 
@@ -59,7 +56,6 @@ fn main() {
 
     let release_response = match client
         .get(&api_url)
-        .header("Authorization", format!("Bearer {}", GITHUB_TOKEN))
         .send()
     {
         Ok(r) => r,
@@ -162,7 +158,6 @@ fn main() {
 
     let download_response = match client
         .get(&asset.browser_download_url)
-        .header("Authorization", format!("Bearer {}", GITHUB_TOKEN))
         .send()
     {
         Ok(r) => r,
