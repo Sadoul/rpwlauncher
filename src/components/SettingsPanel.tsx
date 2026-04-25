@@ -19,6 +19,12 @@ interface Props {
   onMemoryChange: (mem: number) => void;
   onJvmArgsChange: (args: string) => void;
   onGpuModeChange: (mode: string) => void;
+  allowMultipleInstances: boolean;
+  closeLauncherOnGameStart: boolean;
+  reopenLauncherAfterGameClose: boolean;
+  onAllowMultipleInstancesChange: (value: boolean) => void;
+  onCloseLauncherOnGameStartChange: (value: boolean) => void;
+  onReopenLauncherAfterGameCloseChange: (value: boolean) => void;
   onThemeChange: (theme: Theme) => void;
   onAvatarChange: (url: string) => void;
 }
@@ -52,6 +58,12 @@ export default function SettingsPanel({
   onMemoryChange,
   onJvmArgsChange,
   onGpuModeChange,
+  allowMultipleInstances,
+  closeLauncherOnGameStart,
+  reopenLauncherAfterGameClose,
+  onAllowMultipleInstancesChange,
+  onCloseLauncherOnGameStartChange,
+  onReopenLauncherAfterGameCloseChange,
   onThemeChange,
   onAvatarChange,
 }: Props) {
@@ -356,6 +368,28 @@ export default function SettingsPanel({
         </div>
       </Section>
 
+      {/* Launch behavior */}
+      <Section title="Запуск Minecraft">
+        <SettingToggle
+          checked={allowMultipleInstances}
+          onChange={onAllowMultipleInstancesChange}
+          title="Разрешить твинки"
+          description="Если выключено, кнопка «Играть» блокируется пока уже открыт клиент Minecraft."
+        />
+        <SettingToggle
+          checked={closeLauncherOnGameStart}
+          onChange={onCloseLauncherOnGameStartChange}
+          title="Закрывать лаунчер при запуске Minecraft"
+          description="По умолчанию включено: лаунчер закрывается после успешного запуска игры."
+        />
+        <SettingToggle
+          checked={reopenLauncherAfterGameClose}
+          onChange={onReopenLauncherAfterGameCloseChange}
+          title="Открывать лаунчер после закрытия Minecraft"
+          description="Работает если включено закрытие лаунчера при запуске игры."
+        />
+      </Section>
+
       {/* Data folder */}
       <Section title="Данные лаунчера">
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
@@ -501,6 +535,33 @@ function Section({
       <div className="settings-section-title">{title}</div>
       {children}
     </motion.div>
+  );
+}
+
+function SettingToggle({
+  checked,
+  onChange,
+  title,
+  description,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  title: string;
+  description: string;
+}) {
+  return (
+    <label className="setting-toggle-row">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+      />
+      <span className="setting-toggle-box" />
+      <span className="setting-toggle-copy">
+        <span className="setting-toggle-title">{title}</span>
+        <span className="setting-toggle-desc">{description}</span>
+      </span>
+    </label>
   );
 }
 

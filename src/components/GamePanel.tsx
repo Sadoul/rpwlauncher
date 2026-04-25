@@ -26,6 +26,9 @@ interface GamePanelProps {
   jvmArgs?: string;
   gpuMode?: string;
   customModpacks?: CustomModpack[];
+  allowMultipleInstances?: boolean;
+  closeLauncherOnGameStart?: boolean;
+  reopenLauncherAfterGameClose?: boolean;
 }
 
 interface ModpackConfig {
@@ -61,8 +64,20 @@ const MODPACK_CONFIGS: Record<string, ModpackConfig> = {
   },
 };
 
-export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs = "", gpuMode = "auto", customModpacks = [] }: GamePanelProps) {
+export default function GamePanel({
+  page,
+  account,
+  javaPath,
+  maxMemory,
+  jvmArgs = "",
+  gpuMode = "auto",
+  customModpacks = [],
+  allowMultipleInstances = false,
+  closeLauncherOnGameStart = true,
+  reopenLauncherAfterGameClose = true,
+}: GamePanelProps) {
   const [launching, setLaunching] = useState(false);
+  const [gameRunning, setGameRunning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [progress, setProgress] = useState<LaunchProgress | null>(null);
   const [status, setStatus] = useState<"ready" | "downloading" | "update">("ready");
@@ -90,8 +105,14 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
 
   useEffect(() => {
     if (!config.locked) checkModpackUpdate();
+    const gameCheck = window.setInterval(async () => {
+      try {
+        setGameRunning(await invoke<boolean>("is_game_running"));
+      } catch { /* ignore */ }
+    }, 1000);
     return () => {
       if (progressInterval.current) clearInterval(progressInterval.current);
+      clearInterval(gameCheck);
     };
   }, [page]);
 
@@ -140,6 +161,11 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
       return;
     }
 
+    if (!allowMultipleInstances && gameRunning) {
+      setError("Minecraft уже запущен. Включите «Разрешить твинки» в настройках, если хотите открыть ещё один клиент.");
+      return;
+    }
+
     setLaunching(true);
     setError("");
     setProgress(null);
@@ -172,6 +198,9 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
         gameDir,
         jvmArgs: customPack?.jvm_args ?? jvmArgs,
         gpuMode,
+        allowMultipleInstances,
+        closeLauncherOnGameStart,
+        reopenLauncherAfterGameClose,
       });
     } catch (err) {
       setError(String(err));
@@ -348,7 +377,7 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
             <motion.button
               className="play-button-hero footer-play-button"
               onClick={handlePlay}
-              disabled={launching || !javaPath || checkingUpdate || config.locked}
+              disabled={launching || !javaPath || checkingUpdate || config.locked || (!allowMultipleInstances && gameRunning)}
               whileHover={{ scale: 1.03, y: -2 }}
               whileTap={{ scale: 0.97 }}
             >
@@ -357,6 +386,7 @@ export default function GamePanel({ page, account, javaPath, maxMemory, jvmArgs 
                 {checkingUpdate ? "Проверка..."
                   : status === "update" ? "Обновить"
                   : status === "downloading" ? "Скачивание..."
+                  : (!allowMultipleInstances && gameRunning) ? "Minecraft уже открыт"
                   : "Играть"}
               </span>
             </motion.button>

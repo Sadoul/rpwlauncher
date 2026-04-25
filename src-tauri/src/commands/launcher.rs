@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::sync::Mutex;
 
@@ -16,6 +17,7 @@ const GAME_EARLY_EXIT_CHECK_SECONDS: u64 = 12;
 const GAME_LOG_TAIL_LINES: usize = 120;
 
 static LAUNCH_PROGRESS: Mutex<Option<LaunchProgress>> = Mutex::new(None);
+static GAME_RUNNING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LaunchProgress {
@@ -674,6 +676,11 @@ async fn install_fabric(
 }
 
 #[tauri::command]
+pub fn is_game_running() -> bool {
+    GAME_RUNNING.load(Ordering::SeqCst)
+}
+
+#[tauri::command]
 pub async fn launch_game(
     username: String,
     uuid: String,
@@ -684,8 +691,15 @@ pub async fn launch_game(
     game_dir: Option<String>,
     jvm_args: Option<String>,
     gpu_mode: Option<String>,
+    allow_multiple_instances: Option<bool>,
+    close_launcher_on_game_start: Option<bool>,
+    reopen_launcher_after_game_close: Option<bool>,
 ) -> Result<String, String> {
     log(&format!("=== Launch requested: version={}, user={}", version, username));
+
+    if !allow_multiple_instances.unwrap_or(false) && is_game_running() {
+        return Err("Minecraft уже запущен. Включите «Разрешить твинки» в настройках, если хотите открыть ещё один клиент.".to_string());
+    }
 
     let client = reqwest::Client::builder()
         .user_agent("RPWLauncher/2.10")
@@ -1143,6 +1157,27 @@ pub async fn launch_game(
 
     log("[launch] Game is still running after early-exit check");
     set_progress("done", 1.0, 1.0, "Игра запущена!");
+
+    let should_close_launcher = close_launcher_on_game_start.unwrap_or(true);
+    let should_reopen_launcher = reopen_launcher_after_game_close.unwrap_or(true);
+    if !allow_multiple_instances.unwrap_or(false) {
+        GAME_RUNNING.store(true, Ordering::SeqCst);
+    }
+
+    let exe = std::env::current_exe().ok();
+    std::thread::spawn(move || {
+        let _ = child.wait();
+        GAME_RUNNING.store(false, Ordering::SeqCst);
+        if should_close_launcher && should_reopen_launcher {
+            if let Some(path) = exe {
+                let _ = Command::new(path).spawn();
+            }
+        }
+    });
+
+    if should_close_launcher {
+        std::process::exit(0);
+    }
 
     Ok("Game launched successfully".to_string())
 }

@@ -60,6 +60,9 @@ export default function App() {
   const [notification, setNotification] = useState("");
   const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
   const [customModpacks, setCustomModpacks] = useState<CustomModpack[]>([]);
+  const [allowMultipleInstances, setAllowMultipleInstances] = useState(false);
+  const [closeLauncherOnGameStart, setCloseLauncherOnGameStart] = useState(true);
+  const [reopenLauncherAfterGameClose, setReopenLauncherAfterGameClose] = useState(true);
 
   // useLayoutEffect runs synchronously before paint — ensures all CSS variables
   // change in the same frame, so background + widgets transition simultaneously
@@ -84,6 +87,9 @@ export default function App() {
       const savedJvmArgs = localStorage.getItem("rpw_jvm_args");
       const savedGpuMode = localStorage.getItem("rpw_gpu_mode");
       const savedTheme = localStorage.getItem("rpw_theme") as Theme | null;
+      const savedAllowMultipleInstances = localStorage.getItem("rpw_allow_multiple_instances");
+      const savedCloseLauncher = localStorage.getItem("rpw_close_launcher_on_game_start");
+      const savedReopenLauncher = localStorage.getItem("rpw_reopen_launcher_after_game_close");
 
       if (savedMemory) { const m = parseInt(savedMemory); if (!isNaN(m)) setMaxMemory(Math.max(1024, Math.min(16384, m))); }
       if (savedJavaPath) setJavaPath(savedJavaPath);
@@ -91,6 +97,9 @@ export default function App() {
       if (savedJvmArgs) setJvmArgs(savedJvmArgs);
       if (savedGpuMode) setGpuMode(savedGpuMode);
       if (savedTheme === "dark" || savedTheme === "light") setTheme(savedTheme);
+      if (savedAllowMultipleInstances) setAllowMultipleInstances(savedAllowMultipleInstances === "true");
+      if (savedCloseLauncher) setCloseLauncherOnGameStart(savedCloseLauncher === "true");
+      if (savedReopenLauncher) setReopenLauncherAfterGameClose(savedReopenLauncher === "true");
 
       await loadCustomModpacks();
 
@@ -172,6 +181,21 @@ export default function App() {
   const handleGpuModeChange = (mode: string) => {
     setGpuMode(mode);
     localStorage.setItem("rpw_gpu_mode", mode);
+  };
+
+  const handleAllowMultipleInstancesChange = (value: boolean) => {
+    setAllowMultipleInstances(value);
+    localStorage.setItem("rpw_allow_multiple_instances", String(value));
+  };
+
+  const handleCloseLauncherOnGameStartChange = (value: boolean) => {
+    setCloseLauncherOnGameStart(value);
+    localStorage.setItem("rpw_close_launcher_on_game_start", String(value));
+  };
+
+  const handleReopenLauncherAfterGameCloseChange = (value: boolean) => {
+    setReopenLauncherAfterGameClose(value);
+    localStorage.setItem("rpw_reopen_launcher_after_game_close", String(value));
   };
 
   const showNotification = (msg: string) => {
@@ -264,6 +288,12 @@ export default function App() {
                   onMemoryChange={handleMemoryChange}
                   onJvmArgsChange={handleJvmArgsChange}
                   onGpuModeChange={handleGpuModeChange}
+                  allowMultipleInstances={allowMultipleInstances}
+                  closeLauncherOnGameStart={closeLauncherOnGameStart}
+                  reopenLauncherAfterGameClose={reopenLauncherAfterGameClose}
+                  onAllowMultipleInstancesChange={handleAllowMultipleInstancesChange}
+                  onCloseLauncherOnGameStartChange={handleCloseLauncherOnGameStartChange}
+                  onReopenLauncherAfterGameCloseChange={handleReopenLauncherAfterGameCloseChange}
                   onThemeChange={setTheme}
                   onAvatarChange={setAvatarUrl}
                 />
@@ -280,6 +310,9 @@ export default function App() {
                 maxMemory={maxMemory}
                 jvmArgs={jvmArgs}
                 gpuMode={gpuMode}
+                allowMultipleInstances={allowMultipleInstances}
+                closeLauncherOnGameStart={closeLauncherOnGameStart}
+                reopenLauncherAfterGameClose={reopenLauncherAfterGameClose}
               />
             ) : (
               <GamePanel
@@ -290,6 +323,9 @@ export default function App() {
                 maxMemory={maxMemory}
                 jvmArgs={jvmArgs}
                 gpuMode={gpuMode}
+                allowMultipleInstances={allowMultipleInstances}
+                closeLauncherOnGameStart={closeLauncherOnGameStart}
+                reopenLauncherAfterGameClose={reopenLauncherAfterGameClose}
               />
             )}
           </AnimatePresence>

@@ -450,7 +450,7 @@ button { font-family: inherit; }
     0 0 0 1px rgba(255,255,255,0.22) inset,
     0 1px 0 rgba(255,255,255,0.26) inset;
 }
-.play-button-hero:disabled { opacity: 0.46; cursor: not-allowed; }
+.play-button-hero:disabled { opacity: 0.46; cursor: not-allowed; filter: grayscale(0.25); }
 
 .footer-play-button {
   width: auto;
@@ -870,6 +870,44 @@ button { font-family: inherit; }
   display: flex; align-items: center; gap: 8px;
 }
 .settings-section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.setting-toggle-row {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.setting-toggle-row input { display: none; }
+.setting-toggle-box {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.18);
+  position: relative;
+  transition: all var(--ease);
+}
+.setting-toggle-box::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  top: 2px;
+  left: 3px;
+  border-radius: 50%;
+  background: #fff;
+  transition: all var(--ease);
+}
+.setting-toggle-row input:checked + .setting-toggle-box { background: var(--accent); box-shadow: 0 0 14px var(--accent-glow); }
+.setting-toggle-row input:checked + .setting-toggle-box::after { transform: translateX(13px); }
+.setting-toggle-copy { display: flex; flex-direction: column; gap: 2px; }
+.setting-toggle-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.setting-toggle-desc { font-size: 11px; color: var(--text-muted); line-height: 1.35; }
 
 /* Settings buttons */
 .settings-btn {
