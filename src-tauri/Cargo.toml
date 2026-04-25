@@ -1,6 +1,6 @@
 [package]
 name = "rpw-launcher"
-version = "2.22.0"
+version = "2.23.0"
 description = "RPWorld Minecraft Launcher"
 authors = ["Sadoul"]
 edition = "2021"
@@ -36,7 +36,8 @@ base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-windows = { version = "0.58", features = ["Win32_UI_Shell"] }
+windows = { version = "0.58", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls", "Win32_System_LibraryLoader"] }
+raw-window-handle = "0.6"
 
 [profile.release]
 opt-level = 1        # уровень 1 компилируется втрое быстрее чем 3, разница в скорости exe незаметна

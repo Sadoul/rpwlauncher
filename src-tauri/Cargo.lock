@@ -3329,7 +3329,7 @@ dependencies = [
 
 [[package]]
 name = "rpw-launcher"
-version = "2.21.0"
+version = "2.23.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3337,6 +3337,7 @@ dependencies = [
  "futures-util",
  "hex",
  "open",
+ "raw-window-handle",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

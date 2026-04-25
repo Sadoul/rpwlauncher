@@ -14,6 +14,54 @@ fn set_windows_app_user_model_id() {
     }
 }
 
+#[cfg(windows)]
+fn force_windows_taskbar_icon(window: &tauri::WebviewWindow) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::PathBuf;
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        LoadImageW, SendMessageW, IMAGE_ICON, LR_DEFAULTSIZE, LR_LOADFROMFILE, WM_SETICON,
+    };
+
+    let Ok(handle) = window.window_handle() else { return; };
+    let RawWindowHandle::Win32(win32_handle) = handle.as_raw() else { return; };
+    let hwnd = HWND(win32_handle.hwnd.get() as *mut _);
+
+    let icon_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("icons").join("icon.ico");
+    let icon_path_wide: Vec<u16> = OsStr::new(&icon_path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    unsafe {
+        let hicon_big = LoadImageW(
+            None,
+            windows::core::PCWSTR(icon_path_wide.as_ptr()),
+            IMAGE_ICON,
+            256,
+            256,
+            LR_LOADFROMFILE,
+        );
+        if let Ok(icon) = hicon_big {
+            SendMessageW(hwnd, WM_SETICON, WPARAM(1), LPARAM(icon.0 as isize));
+        }
+
+        let hicon_small = LoadImageW(
+            None,
+            windows::core::PCWSTR(icon_path_wide.as_ptr()),
+            IMAGE_ICON,
+            16,
+            16,
+            LR_LOADFROMFILE | LR_DEFAULTSIZE,
+        );
+        if let Ok(icon) = hicon_small {
+            SendMessageW(hwnd, WM_SETICON, WPARAM(0), LPARAM(icon.0 as isize));
+        }
+    }
+}
+
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| format!("Не удалось открыть URL: {e}"))
@@ -39,6 +87,8 @@ pub fn run() {
             // tauri::include_image! decodes PNG at compile time into RGBA bytes.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_icon(tauri::include_image!("icons/128x128.png"));
+                #[cfg(windows)]
+                force_windows_taskbar_icon(&window);
             }
             Ok(())
         })
