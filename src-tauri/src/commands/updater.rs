@@ -302,7 +302,7 @@ fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), S
          timeout /t 2 /nobreak >nul\r\n\
          \"{installer}\" /S\r\n\
          del \"{installer}\"\r\n\
-         (goto) 2>nul & del \"%~f0\"\r\n",
+         exit\r\n",
         installer = installer_str,
     );
 
