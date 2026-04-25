@@ -16,7 +16,6 @@ use std::process::{Command, exit};
 
 #[derive(serde::Deserialize)]
 struct GitHubRelease {
-    tag_name: String,
     assets: Vec<GitHubAsset>,
 }
 
@@ -84,22 +83,21 @@ fn main() {
         }
     };
 
-    let latest_version = release.tag_name.trim_start_matches('v').to_string();
-
-    // ── 2. Check installed version ─────────────────────────────────────────────
+    // ── 2. Check installed launcher ───────────────────────────────────────────
     let installed_version = get_installed_version();
     let launcher_path = find_launcher();
 
-    let needs_update = match &installed_version {
-        Some(installed) => compare_versions(&latest_version, installed) == std::cmp::Ordering::Greater,
-        None => true, // not installed at all
-    };
+    // Hybrid update flow:
+    // - If launcher is already installed, always open it and let the Tauri UI
+    //   show the nice UpdateOverlay. No hidden/silent update here.
+    // - If launcher is missing, the stub still bootstraps it silently.
+    if let Some(path) = launcher_path {
+        let _ = Command::new(&path).spawn();
+        exit(0);
+    }
 
+    let needs_update = installed_version.is_none();
     if !needs_update {
-        // Already up to date — just launch
-        if let Some(path) = launcher_path {
-            let _ = Command::new(&path).spawn();
-        }
         exit(0);
     }
 
@@ -260,16 +258,6 @@ fn find_launcher() -> Option<PathBuf> {
     None
 }
 
-/// Compare two version strings like "2.15.0" vs "2.11.0".
-fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
-    let parse = |v: &str| {
-        v.trim_start_matches('v')
-            .split('.')
-            .filter_map(|s| s.parse::<u32>().ok())
-            .collect::<Vec<_>>()
-    };
-    parse(a).cmp(&parse(b))
-}
 
 fn show_error(msg: &str) {
     #[cfg(windows)]
