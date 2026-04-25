@@ -1090,62 +1090,173 @@ button { font-family: inherit; }
    CUSTOM MODPACK PANEL
    ══════════════════════════════════════════════════════════════ */
 .custom-panel {
-  padding: 20px 22px; overflow-y: auto; flex: 1;
-  position: relative; z-index: 1;
-  color: #fff;
+  padding: 26px 28px;
+  overflow-y: auto;
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .custom-panel h2 {
-  font-size: 20px; font-weight: 700; margin-bottom: 18px;
-  color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  margin: 0;
+  color: var(--text);
+  text-shadow: 0 2px 14px rgba(0,0,0,0.55);
 }
+
+.custom-card {
+  background: rgba(15, 18, 26, 0.74);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  padding: 16px 18px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.custom-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: rgba(255,255,255,0.70);
+}
+
 .loader-grid {
-  display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
 }
 .loader-card {
-  display: flex; align-items: center; justify-content: center;
-  padding: 13px 8px;
-  background: rgba(5,8,14,0.72);
-  border: 2px solid rgba(255,255,255,0.18);
-  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
   cursor: pointer;
-  color: rgba(255,255,255,0.92); font-size: 12px; font-weight: 700;
+  color: rgba(255,255,255,0.88);
+  font-size: 13px;
+  font-weight: 700;
   text-align: center;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.24);
-  transition: all var(--ease);
+  letter-spacing: 0.2px;
+  transition: background var(--ease), border-color var(--ease), transform var(--ease);
 }
-.loader-card:hover { background: rgba(15,20,30,0.86); color: #fff; }
+.loader-card:hover {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.22);
+}
 .loader-card.selected {
-  background: rgba(20,24,34,0.92); color: #fff;
+  background: rgba(255,255,255,0.14);
+  border-color: rgba(255,255,255,0.45);
+  color: #fff;
 }
-.loader-label { font-size: 12px; font-weight: 800; text-shadow: 0 1px 8px rgba(0,0,0,0.65); }
+.loader-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
 
-.version-selects { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-.version-select-group { display: flex; flex-direction: column; gap: 4px; }
+.snapshot-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.78);
+  cursor: pointer;
+  user-select: none;
+  margin-left: 8px;
+}
+.snapshot-toggle input { accent-color: var(--accent); }
+
+.version-selects {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.version-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .version-select-label {
-  font-size: 10px; font-weight: 800; color: rgba(255,255,255,0.9);
-  text-transform: uppercase; letter-spacing: 1px;
-  text-shadow: 0 1px 8px rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.78);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
 }
 .version-select {
-  padding: 9px 11px; font-size: 12px;
-  color: #fff; background: rgba(5,8,14,0.78);
-  border: 1px solid rgba(255,255,255,0.28);
-  border-radius: var(--r-sm); outline: none; cursor: pointer;
-  transition: all var(--ease);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 10px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--ease), background var(--ease);
 }
-.version-select:focus { border-color: var(--accent); }
-.version-select option { background: #0d1117; color: #fff; }
+.version-select:hover { background: rgba(255,255,255,0.08); }
+.version-select:focus { border-color: var(--accent); background: rgba(255,255,255,0.10); }
+.version-select option { background: #1a1d24; color: #fff; }
 
 .modpack-name-input {
-  width: 100%; padding: 10px 12px;
-  font-size: 13px; font-family: 'Inter', sans-serif;
-  color: #fff; background: rgba(5,8,14,0.78);
-  border: 1px solid rgba(255,255,255,0.28);
-  border-radius: var(--r-sm); outline: none; margin-bottom: 12px;
-  transition: border-color var(--ease);
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color var(--ease), background var(--ease);
 }
-.modpack-name-input:focus { border-color: var(--accent); }
-.modpack-name-input::placeholder { color: rgba(255,255,255,0.66); }
+.modpack-name-input:hover { background: rgba(255,255,255,0.08); }
+.modpack-name-input:focus { border-color: var(--accent); background: rgba(255,255,255,0.10); }
+.modpack-name-input::placeholder { color: rgba(255,255,255,0.5); }
+
+.ram-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ram-row .ram-slider { flex: 1; }
+.ram-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(120,180,255,0.32), rgba(140,120,240,0.32));
+  border: 1px solid rgba(255,255,255,0.30);
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
+
+.modpack-textarea {
+  width: 100%;
+  min-height: 56px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  resize: vertical;
+}
 
 /* ══════════════════════════════════════════════════════════════
    UPDATE OVERLAY

@@ -153,32 +153,36 @@ export default function CustomModpackPanel({ onInstalled }: CustomModpackPanelPr
         <h2>Свой модпак</h2>
 
         {/* Loader selector */}
-        <div className="loader-grid">
-          {LOADERS.map(l => (
-            <motion.div
-              key={l.id}
-              className={`loader-card ${loader === l.id ? "selected" : ""}`}
-              onClick={() => { setLoader(l.id); setError(""); }}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.97 }}
-              style={loader === l.id ? { borderColor: l.color, boxShadow: `0 0 14px ${l.color}55` } : {}}
-            >
-              <div className="loader-label" style={{ color: l.color }}>{l.label}</div>
-            </motion.div>
-          ))}
+        <div className="custom-card">
+          <div className="custom-card-title">Загрузчик</div>
+          <div className="loader-grid">
+            {LOADERS.map(l => (
+              <motion.div
+                key={l.id}
+                className={`loader-card ${loader === l.id ? "selected" : ""}`}
+                onClick={() => { setLoader(l.id); setError(""); }}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                style={loader === l.id ? { borderColor: l.color, boxShadow: `0 0 14px ${l.color}55` } : {}}
+              >
+                <div className="loader-label" style={{ color: l.color }}>{l.label}</div>
+              </motion.div>
+            ))}
+          </div>
         </div>
 
         {/* Version selectors */}
-        <div className="version-selects">
+        <div className="custom-card">
+          <div className="custom-card-title">Версия</div>
+          <div className="version-selects">
           <div className="version-select-group">
             <label className="version-select-label">
               Minecraft
-              <label style={{ marginLeft: 8, fontSize: 10, fontWeight: 400, opacity: 0.7, cursor: "pointer" }}>
+              <label className="snapshot-toggle">
                 <input
                   type="checkbox"
                   checked={showSnapshots}
                   onChange={e => setShowSnapshots(e.target.checked)}
-                  style={{ marginRight: 4 }}
                 />
                 снапшоты
               </label>
@@ -222,41 +226,42 @@ export default function CustomModpackPanel({ onInstalled }: CustomModpackPanelPr
               )}
             </div>
           )}
+          </div>
         </div>
 
         {/* Modpack name */}
-        <input
-          className="modpack-name-input"
-          placeholder="Название модпака (например: MyPack 1.20.1)"
-          value={modpackName}
-          onChange={e => { setModpackName(e.target.value); setError(""); }}
-          maxLength={64}
-        />
+        <div className="custom-card">
+          <div className="custom-card-title">Название модпака</div>
+          <input
+            className="modpack-name-input"
+            placeholder="Например: MyPack 1.20.1"
+            value={modpackName}
+            onChange={e => { setModpackName(e.target.value); setError(""); }}
+            maxLength={64}
+          />
+        </div>
 
         {/* RAM + JVM */}
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap" }}>RAM:</span>
+        <div className="custom-card">
+          <div className="custom-card-title">Память и JVM</div>
+          <div className="ram-row">
             <input
               type="range" min={1024} max={16384} step={512} value={ram}
               onChange={e => setRam(Number(e.target.value))}
               className="ram-slider"
-              style={{ flex: 1, "--slider-pct": ((ram - 1024) / (16384 - 1024) * 100) + "%" } as any}
+              style={{ "--slider-pct": ((ram - 1024) / (16384 - 1024) * 100) + "%" } as any}
             />
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-primary)", minWidth: 52 }}>
+            <span className="ram-chip">
               {(ram / 1024).toFixed(1)} ГБ
             </span>
           </div>
+          <textarea
+            className="modpack-name-input modpack-textarea"
+            placeholder="Дополнительные JVM-аргументы (необязательно)"
+            value={jvmArgs}
+            onChange={e => setJvmArgs(e.target.value)}
+          />
         </div>
-
-        {/* JVM args */}
-        <textarea
-          className="modpack-name-input"
-          style={{ minHeight: 44, fontFamily: "monospace", fontSize: 11, resize: "vertical", marginBottom: 14 }}
-          placeholder="Дополнительные JVM-аргументы (необязательно)"
-          value={jvmArgs}
-          onChange={e => setJvmArgs(e.target.value)}
-        />
 
         {/* Error */}
         <AnimatePresence>
