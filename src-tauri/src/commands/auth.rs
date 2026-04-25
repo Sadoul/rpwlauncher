@@ -6,6 +6,8 @@ use std::path::PathBuf;
 const ACCOUNTS_URL: &str = "https://raw.githubusercontent.com/Sadoul/rpwlauncher/main/public/auth/offline_accounts.rpwenc";
 const ACCOUNTS_KEY: &[u8] = b"RPWLauncherFriendsOnlyKey_v1";
 const ADMIN_USERNAME: &str = "Sadoul";
+const ACCOUNTS_REPO_API: &str = "https://api.github.com/repos/Sadoul/rpwlauncher/contents/public/auth/offline_accounts.rpwenc";
+const ACCOUNTS_BRANCH: &str = "main";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Account {
@@ -26,6 +28,11 @@ pub struct OfflineCredential {
 #[derive(Debug, Serialize, Deserialize)]
 struct OfflineCredentialFile {
     accounts: Vec<OfflineCredential>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubContentResponse {
+    sha: String,
 }
 
 fn get_config_dir() -> PathBuf {
@@ -129,14 +136,83 @@ pub async fn get_admin_accounts(current_username: String) -> Result<Vec<OfflineC
         .collect())
 }
 
-#[tauri::command]
-pub async fn encrypt_admin_accounts(accounts: Vec<OfflineCredential>) -> Result<String, String> {
+fn with_admin_account(accounts: Vec<OfflineCredential>) -> OfflineCredentialFile {
     let mut with_admin = vec![OfflineCredential {
         username: ADMIN_USERNAME.to_string(),
         password: "idi_nahui1".to_string(),
     }];
     with_admin.extend(accounts.into_iter().filter(|a| !a.username.eq_ignore_ascii_case(ADMIN_USERNAME)));
-    encrypt_accounts_payload(&OfflineCredentialFile { accounts: with_admin })
+    OfflineCredentialFile { accounts: with_admin }
+}
+
+#[tauri::command]
+pub async fn encrypt_admin_accounts(accounts: Vec<OfflineCredential>) -> Result<String, String> {
+    encrypt_accounts_payload(&with_admin_account(accounts))
+}
+
+#[tauri::command]
+pub async fn commit_admin_accounts(
+    current_username: String,
+    github_token: String,
+    accounts: Vec<OfflineCredential>,
+) -> Result<String, String> {
+    if !current_username.eq_ignore_ascii_case(ADMIN_USERNAME) {
+        return Err("Доступ запрещён".to_string());
+    }
+
+    let token = github_token.trim();
+    if token.is_empty() {
+        return Err("Введите GitHub token с доступом Contents: Read and write".to_string());
+    }
+
+    let encrypted = encrypt_accounts_payload(&with_admin_account(accounts))?;
+    let client = reqwest::Client::builder()
+        .user_agent("RPWLauncher-AdminPanel")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let current = client
+        .get(ACCOUNTS_REPO_API)
+        .bearer_auth(token)
+        .query(&[("ref", ACCOUNTS_BRANCH)])
+        .send()
+        .await
+        .map_err(|e| format!("Не удалось получить текущий файл с GitHub: {e}"))?;
+
+    if !current.status().is_success() {
+        let status = current.status();
+        let body = current.text().await.unwrap_or_default();
+        return Err(format!("GitHub не отдал текущий файл: {status}. {body}"));
+    }
+
+    let current: GitHubContentResponse = current
+        .json()
+        .await
+        .map_err(|e| format!("Не удалось разобрать ответ GitHub: {e}"))?;
+
+    let payload = serde_json::json!({
+        "message": "chore: update offline account passwords from launcher admin panel",
+        "content": general_purpose::STANDARD.encode(encrypted.as_bytes()),
+        "sha": current.sha,
+        "branch": ACCOUNTS_BRANCH,
+    });
+
+    let update = client
+        .put(ACCOUNTS_REPO_API)
+        .bearer_auth(token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Не удалось отправить commit на GitHub: {e}"))?;
+
+    if !update.status().is_success() {
+        let status = update.status();
+        let body = update.text().await.unwrap_or_default();
+        return Err(format!("GitHub отклонил commit: {status}. {body}"));
+    }
+
+    Ok("Пароли обновлены: commit отправлен в GitHub".to_string())
 }
 
 #[tauri::command]
