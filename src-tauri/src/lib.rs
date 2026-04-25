@@ -1,6 +1,7 @@
 mod commands;
 
 use commands::{auth, downloader, java, launcher, logger, settings, updater, versions};
+use tauri::Manager;
 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
@@ -15,6 +16,14 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            // Explicitly set the taskbar/window icon at runtime.
+            // tauri::include_image! decodes PNG at compile time into RGBA bytes.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_icon(tauri::include_image!("icons/128x128.png"));
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Auth
             auth::login_offline,

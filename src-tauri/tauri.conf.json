@@ -20,8 +20,7 @@
         "center": true,
         "decorations": false,
         "transparent": true,
-        "resizable": true,
-        "icon": "icons/icon.ico"
+        "resizable": true
       }
     ],
     "withGlobalTauri": true,
