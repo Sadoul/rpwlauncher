@@ -977,6 +977,42 @@ button { font-family: inherit; }
 .settings-btn.compact { padding: 8px 10px; min-width: 76px; font-size: 11px; }
 .settings-btn.danger { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
 .admin-message { white-space: pre-wrap; }
+.admin-main-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+.admin-main-tab {
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.admin-main-tab span { display: block; font-size: 17px; font-weight: 900; margin-bottom: 4px; }
+.admin-main-tab small { color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
+.admin-main-tab:hover,
+.admin-main-tab.active {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,138,76,0.12));
+  box-shadow: 0 12px 30px rgba(0,0,0,0.18), 0 0 20px var(--accent-glow);
+}
+.admin-build-tabs { display: flex; gap: 10px; margin: 14px 0; }
+.admin-build-tab {
+  flex: 1;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  font-weight: 900;
+  cursor: pointer;
+}
+.admin-build-tab.active { border-color: var(--accent); background: var(--accent); color: #fff; }
 .admin-tabs,
 .admin-build-actions {
   display: flex;

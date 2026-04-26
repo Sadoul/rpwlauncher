@@ -220,9 +220,15 @@ export default function AdminPanel({ username }: Props) {
     <div className="settings-panel admin-panel">
       <h2 style={{ marginBottom: 10, fontWeight: 800, fontSize: 22 }}>Админ-панель</h2>
 
-      <div className="admin-tabs">
-        <button className={`settings-btn compact ${activeTab === "accounts" ? "accent" : ""}`} onClick={() => setActiveTab("accounts")}>Пароли</button>
-        <button className={`settings-btn compact ${activeTab === "builds" ? "accent" : ""}`} onClick={() => setActiveTab("builds")}>Сборки</button>
+      <div className="admin-main-tabs">
+        <button className={`admin-main-tab ${activeTab === "accounts" ? "active" : ""}`} onClick={() => setActiveTab("accounts")}>
+          <span>Пароли</span>
+          <small>Оффлайн-аккаунты игроков</small>
+        </button>
+        <button className={`admin-main-tab ${activeTab === "builds" ? "active" : ""}`} onClick={() => setActiveTab("builds")}>
+          <span>Сборки</span>
+          <small>RPWorld и MiniGames: моды, версия, loader</small>
+        </button>
       </div>
 
       <div className="admin-token-box">
@@ -269,9 +275,18 @@ export default function AdminPanel({ username }: Props) {
 
       {activeTab === "builds" && (
         <div className="admin-build-panel">
-          <div className="admin-tabs">
-            {BUILD_NAMES.map(build => <button key={build} className={`settings-btn compact ${activeBuild === build ? "accent" : ""}`} onClick={() => setActiveBuild(build)}>{build}</button>)}
+          <div className="admin-note">
+            Здесь настраиваются сборки <b>RPWorld</b> и <b>MiniGames</b>: Minecraft version, loader, список модов и загрузка .jar через drag & drop.
           </div>
+          <div className="admin-build-tabs">
+            {BUILD_NAMES.map(build => (
+              <button key={build} className={`admin-build-tab ${activeBuild === build ? "active" : ""}`} onClick={() => setActiveBuild(build)}>
+                {build === "rpworld" ? "RPWorld" : "MiniGames"}
+              </button>
+            ))}
+          </div>
+          {!githubToken.trim() && <div className="admin-message">Введите GitHub token выше, чтобы загрузить настройки сборок.</div>}
+          {githubToken.trim() && !manifest && <div className="admin-message">Загружаю manifest сборки...</div>}
           {manifest && (
             <>
               <div className="admin-build-settings">
