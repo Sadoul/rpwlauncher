@@ -10,7 +10,8 @@ export type Page = "rpworld" | "minigames" | "custom" | "settings" | "admin" | `
 interface SidebarProps {
   currentPage: Page;
   onPageChange: (page: Page) => void;
-  account: { username: string; account_type: string } | null;
+  account: { username: string; account_type: string; is_admin?: boolean } | null;
+
   onLogout: () => void;
   avatarUrl: string | null;
   customModpacks: CustomModpack[];
@@ -92,9 +93,10 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
   const baseNavItems: NavItem[] = useMemo(
     () => [
       ...NAV_ITEMS,
-      ...(account?.username === "Sadoul"
+      ...(account?.is_admin
         ? [{ id: "admin" as Page, label: "Админ", icon: <IconSettings /> }]
         : []),
+
       ...customModpacks.map((pack) => ({
         id: `custom:${pack.name}` as Page,
         label: pack.name,
@@ -102,7 +104,8 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
         customName: pack.name,
       })),
     ],
-    [account?.username, customModpacks],
+    [account?.is_admin, customModpacks],
+
   );
 
   const navItems: NavItem[] = useMemo(() => {

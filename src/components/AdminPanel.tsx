@@ -4,7 +4,9 @@ import { invoke } from "@tauri-apps/api/core";
 interface AccountRow {
   username: string;
   password: string;
+  role?: string;
 }
+
 
 interface BuildFileEntry {
   name: string;
@@ -25,7 +27,9 @@ interface BuildManifest {
 
 interface Props {
   username: string;
+  isOwner: boolean;
 }
+
 
 const ADMIN_NAME = "Sadoul";
 const BUILD_NAMES = ["rpworld", "minigames"];
@@ -33,11 +37,14 @@ const LOADERS = ["vanilla", "forge", "fabric", "neoforge", "optifine"];
 
 const formatSize = (size: number) => `${(size / 1024 / 1024).toFixed(1)} МБ`;
 
-export default function AdminPanel({ username }: Props) {
+export default function AdminPanel({ username, isOwner }: Props) {
+
   const [activeTab, setActiveTab] = useState<"accounts" | "builds">("accounts");
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [githubToken, setGithubToken] = useState("");
   const [message, setMessage] = useState("");
+  const [toast, setToast] = useState("");
+
   const [saving, setSaving] = useState(false);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [newUsername, setNewUsername] = useState("");
@@ -78,8 +85,15 @@ export default function AdminPanel({ username }: Props) {
 
 
   useEffect(() => {
-    if (githubToken.trim()) loadManifest(activeBuild);
-  }, [activeBuild, githubToken]);
+    if (isOwner && githubToken.trim()) loadManifest(activeBuild);
+  }, [activeBuild, githubToken, isOwner]);
+
+  const notify = (text: string) => {
+    setMessage(text);
+    setToast(text);
+    window.setTimeout(() => setToast(""), 4500);
+  };
+
 
   const load = async () => {
     try {
@@ -136,7 +150,8 @@ export default function AdminPanel({ username }: Props) {
     setAccounts(prev => [...prev, { username: nextUsername, password: nextPassword }]);
     setNewUsername("");
     setNewPassword("");
-    setMessage(`Игрок ${nextUsername} добавлен локально. Нажмите подтверждение, чтобы отправить commit.`);
+      notify(`Игрок ${nextUsername} добавлен локально. Нажмите подтверждение, чтобы отправить commit.`);
+
   };
 
   const deleteAccount = (account: AccountRow) => {
@@ -184,10 +199,12 @@ export default function AdminPanel({ username }: Props) {
   };
 
   const downloadMod = async (mod: BuildFileEntry) => {
-    setMessage(`Скачиваю ${mod.name}...`);
+    notify(`Скачиваю ${mod.name}...`);
+
     try {
       const path = await invoke<string>("download_build_mod_file", { modEntry: mod });
-      setMessage(`Мод сохранён: ${path}`);
+      notify(`Мод сохранён: ${path}`);
+
     } catch (e) {
       setMessage(String(e));
     }
@@ -195,7 +212,8 @@ export default function AdminPanel({ username }: Props) {
 
   const downloadBuild = async () => {
     if (!manifest) return;
-    setMessage(`Скачиваю сборку ${activeBuild}...`);
+    notify(`Скачиваю сборку ${activeBuild}...`);
+
     try {
       const result = await invoke<string>("download_build_bundle", { build: activeBuild, manifest });
       setMessage(result);
@@ -211,7 +229,8 @@ export default function AdminPanel({ username }: Props) {
       if (typeof selected === "string") {
         await invoke("set_build_download_dir", { path: selected });
         setDownloadDir(selected);
-        setMessage(`Папка сохранения: ${selected}`);
+        notify(`Папка сохранения: ${selected}`);
+
       }
     } catch (e) {
       setMessage(String(e));
@@ -234,7 +253,8 @@ export default function AdminPanel({ username }: Props) {
         ...prev,
         mods: [...prev.mods.filter(m => m.name !== entry.name), entry],
       } : prev);
-      setMessage(`Мод ${entry.name} загружен. Нажмите «Сохранить manifest», чтобы он вошёл в сборку.`);
+      notify(`Мод ${entry.name} загружен. Нажмите «Сохранить manifest», чтобы он вошёл в сборку.`);
+
     } catch (e) {
       setMessage(String(e));
     } finally {
@@ -274,14 +294,18 @@ export default function AdminPanel({ username }: Props) {
       <h2 style={{ marginBottom: 10, fontWeight: 800, fontSize: 22 }}>Админ-панель</h2>
 
       <div className="admin-main-tabs">
+
         <button className={`admin-main-tab ${activeTab === "accounts" ? "active" : ""}`} onClick={() => setActiveTab("accounts")}>
           <span>Пароли</span>
           <small>Оффлайн-аккаунты игроков</small>
         </button>
-        <button className={`admin-main-tab ${activeTab === "builds" ? "active" : ""}`} onClick={() => setActiveTab("builds")}>
-          <span>Сборки</span>
-          <small>RPWorld и MiniGames: моды, версия, loader</small>
-        </button>
+        {isOwner && (
+          <button className={`admin-main-tab ${activeTab === "builds" ? "active" : ""}`} onClick={() => setActiveTab("builds")}>
+            <span>Сборки</span>
+            <small>RPWorld и MiniGames: моды, версия, loader</small>
+          </button>
+        )}
+
       </div>
 
       <div className="admin-token-box">
@@ -319,8 +343,19 @@ export default function AdminPanel({ username }: Props) {
                     {account.username.toLowerCase() === ADMIN_NAME.toLowerCase() && <span className="admin-mod-count" style={{ fontSize: 9, marginLeft: 6 }}>ВЫ</span>}
                   </div>
                   <input className="admin-password-input" type={visible ? "text" : "password"} value={account.password} onChange={e => updatePassword(index, e.target.value)} />
+                  {isOwner && account.username.toLowerCase() !== ADMIN_NAME.toLowerCase() && (
+                    <label className="admin-mod-enabled admin-role-toggle" title="Модератор может управлять пользователями, но не сборками">
+                      <input
+                        type="checkbox"
+                        checked={(account.role || "").toLowerCase() === "moderator"}
+                        onChange={e => setAccounts(prev => prev.map((row, i) => i === index ? { ...row, role: e.target.checked ? "moderator" : "" } : row))}
+                      />
+                      <span>Модер</span>
+                    </label>
+                  )}
                   <button className="settings-btn compact" onClick={() => setShowPasswords(prev => ({ ...prev, [account.username]: !visible }))}>{visible ? "Скрыть" : "Показать"}</button>
                   <button className="settings-btn danger compact" disabled={account.username.toLowerCase() === ADMIN_NAME.toLowerCase()} onClick={() => deleteAccount(account)}>Удалить</button>
+
                 </div>
               );
             })}
@@ -329,7 +364,8 @@ export default function AdminPanel({ username }: Props) {
         </>
       )}
 
-      {activeTab === "builds" && (
+      {activeTab === "builds" && isOwner && (
+
         <div className="admin-build-panel">
           <div className="admin-build-tabs">
             {BUILD_NAMES.map(build => (
@@ -403,6 +439,8 @@ export default function AdminPanel({ username }: Props) {
       )}
 
       {message && <div className="admin-message">{message}</div>}
+      {toast && <div className="notification admin-toast">{toast}</div>}
     </div>
+
   );
 }

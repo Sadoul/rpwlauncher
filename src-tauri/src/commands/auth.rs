@@ -16,13 +16,20 @@ pub struct Account {
     pub account_type: String, // "offline" or "microsoft"
     #[serde(default)]
     pub is_admin: bool,
+    #[serde(default)]
+    pub is_owner: bool,
+    #[serde(default)]
+    pub role: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OfflineCredential {
     pub username: String,
     pub password: String,
+    #[serde(default)]
+    pub role: String,
 }
+
 
 #[derive(Debug, Serialize, Deserialize)]
 struct OfflineCredentialFile {
@@ -147,15 +154,38 @@ async fn load_accounts() -> Result<OfflineCredentialFile, String> {
     decrypt_accounts_payload(include_str!("../../../public/auth/offline_accounts.rpwenc"))
 }
 
-fn build_account(username: String) -> Account {
+fn is_owner(username: &str) -> bool {
+    username.eq_ignore_ascii_case(ADMIN_USERNAME)
+}
+
+fn is_moderator(account: &OfflineCredential) -> bool {
+    account.role.eq_ignore_ascii_case("moderator")
+}
+
+async fn has_admin_panel_access(username: &str) -> Result<bool, String> {
+    if is_owner(username) {
+        return Ok(true);
+    }
+    let accounts = load_accounts().await?;
+    Ok(accounts.accounts.iter().any(|account| {
+        account.username.eq_ignore_ascii_case(username) && is_moderator(account)
+    }))
+}
+
+fn build_account(credential: &OfflineCredential) -> Account {
+    let owner = is_owner(&credential.username);
+    let moderator = is_moderator(credential);
     Account {
-        username: username.clone(),
+        username: credential.username.clone(),
         uuid: uuid::Uuid::new_v4().to_string().replace('-', ""),
         access_token: "0".to_string(),
         account_type: "offline".to_string(),
-        is_admin: username.eq_ignore_ascii_case(ADMIN_USERNAME),
+        is_admin: owner || moderator,
+        is_owner: owner,
+        role: if owner { "owner".to_string() } else { credential.role.clone() },
     }
 }
+
 
 #[tauri::command]
 pub async fn login_offline(username: String, password: String) -> Result<Account, String> {
@@ -171,7 +201,8 @@ pub async fn login_offline(username: String, password: String) -> Result<Account
         return Err("Неверный пароль".to_string());
     }
 
-    let account = build_account(expected.username.clone());
+    let account = build_account(expected);
+
     let json = serde_json::to_string_pretty(&account).map_err(|e| e.to_string())?;
     fs::write(get_account_file(), json).map_err(|e| e.to_string())?;
     Ok(account)
@@ -179,10 +210,11 @@ pub async fn login_offline(username: String, password: String) -> Result<Account
 
 #[tauri::command]
 pub async fn get_admin_token(current_username: String) -> Result<String, String> {
-    if !current_username.eq_ignore_ascii_case(ADMIN_USERNAME) {
+    if !has_admin_panel_access(&current_username).await? {
         return Err("Доступ запрещён".to_string());
     }
     let path = get_admin_token_file();
+
     if !path.exists() {
         return Ok(String::new());
     }
@@ -191,20 +223,22 @@ pub async fn get_admin_token(current_username: String) -> Result<String, String>
 
 #[tauri::command]
 pub async fn save_admin_token(current_username: String, github_token: String) -> Result<(), String> {
-    if !current_username.eq_ignore_ascii_case(ADMIN_USERNAME) {
+    if !has_admin_panel_access(&current_username).await? {
         return Err("Доступ запрещён".to_string());
     }
     fs::write(get_admin_token_file(), github_token.trim()).map_err(|e| e.to_string())
 }
 
+
 #[tauri::command]
 pub async fn get_admin_accounts(current_username: String) -> Result<Vec<OfflineCredential>, String> {
-    if !current_username.eq_ignore_ascii_case(ADMIN_USERNAME) {
+    if !has_admin_panel_access(&current_username).await? {
         return Err("Доступ запрещён".to_string());
     }
     let accounts = load_accounts().await?;
     Ok(accounts.accounts)
 }
+
 
 fn normalized_accounts(accounts: Vec<OfflineCredential>) -> Result<OfflineCredentialFile, String> {
     let mut result: Vec<OfflineCredential> = Vec::new();
@@ -217,7 +251,15 @@ fn normalized_accounts(accounts: Vec<OfflineCredential>) -> Result<OfflineCreden
         if result.iter().any(|existing| existing.username.eq_ignore_ascii_case(&username)) {
             return Err(format!("Дубликат аккаунта: {username}"));
         }
-        result.push(OfflineCredential { username, password });
+        let role = if username.eq_ignore_ascii_case(ADMIN_USERNAME) {
+            "owner".to_string()
+        } else if account.role.eq_ignore_ascii_case("moderator") {
+            "moderator".to_string()
+        } else {
+            String::new()
+        };
+        result.push(OfflineCredential { username, password, role });
+
     }
     if !result.iter().any(|a| a.username.eq_ignore_ascii_case(ADMIN_USERNAME)) {
         return Err("Нельзя удалить аккаунт Sadoul".to_string());
@@ -236,11 +278,30 @@ pub async fn commit_admin_accounts(
     github_token: String,
     accounts: Vec<OfflineCredential>,
 ) -> Result<String, String> {
-    if !current_username.eq_ignore_ascii_case(ADMIN_USERNAME) {
+    if !has_admin_panel_access(&current_username).await? {
         return Err("Доступ запрещён".to_string());
+    }
+    let owner = is_owner(&current_username);
+    if !owner {
+        let current_accounts = load_accounts().await?;
+        let next_accounts = normalized_accounts(accounts.clone())?;
+        for next in &next_accounts.accounts {
+            let Some(current) = current_accounts.accounts.iter().find(|account| account.username.eq_ignore_ascii_case(&next.username)) else {
+                continue;
+            };
+            if current.role != next.role {
+                return Err("Модератор не может менять роли пользователей".to_string());
+            }
+        }
+        for current in &current_accounts.accounts {
+            if !next_accounts.accounts.iter().any(|next| next.username.eq_ignore_ascii_case(&current.username)) && !current.role.is_empty() {
+                return Err("Модератор не может удалять пользователей с ролями".to_string());
+            }
+        }
     }
 
     let token = github_token.trim();
+
     if token.is_empty() {
         return Err("Введите GitHub token с доступом Contents: Read and write".to_string());
     }
@@ -330,7 +391,17 @@ pub async fn get_saved_account() -> Result<Option<Account>, String> {
 
     let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let mut account: Account = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    account.is_admin = account.username.eq_ignore_ascii_case(ADMIN_USERNAME);
+    account.is_owner = is_owner(&account.username);
+    if account.is_owner {
+        account.is_admin = true;
+        account.role = "owner".to_string();
+    } else if let Ok(accounts) = load_accounts().await {
+        if let Some(credential) = accounts.accounts.iter().find(|item| item.username.eq_ignore_ascii_case(&account.username)) {
+            account.is_admin = is_moderator(credential);
+            account.role = credential.role.clone();
+        }
+    }
+
     Ok(Some(account))
 }
 

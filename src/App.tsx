@@ -17,6 +17,8 @@ interface Account {
   access_token: string;
   account_type: string;
   is_admin?: boolean;
+  is_owner?: boolean;
+  role?: string;
 }
 
 interface JavaInfo {
@@ -320,7 +322,7 @@ export default function App() {
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <AdminPanel username={account.username} />
+                <AdminPanel username={account.username} isOwner={!!account.is_owner} />
               </motion.div>
             ) : currentPage === "custom" ? (
               <CustomModpackPanel key="custom" onInstalled={loadCustomModpacks} />
