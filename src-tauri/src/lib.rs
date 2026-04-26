@@ -13,11 +13,38 @@ fn ensure_single_instance_or_exit() {
     unsafe {
         let handle = CreateMutexW(None, false, PCWSTR(name.as_ptr()));
         if GetLastError() == ERROR_ALREADY_EXISTS {
-            std::process::exit(0);
+            close_existing_launcher_processes();
+            std::thread::sleep(std::time::Duration::from_millis(900));
+
+            // Try to acquire the mutex again after closing the old launcher.
+            let retry_handle = CreateMutexW(None, false, PCWSTR(name.as_ptr()));
+            if GetLastError() == ERROR_ALREADY_EXISTS {
+                std::process::exit(0);
+            }
+            let _ = Box::leak(Box::new(retry_handle));
+            return;
         }
         // Intentionally keep the mutex handle alive for the process lifetime.
         let _ = Box::leak(Box::new(handle));
     }
+}
+
+#[cfg(windows)]
+fn close_existing_launcher_processes() {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let current_pid = std::process::id().to_string();
+    let script = format!(
+        "Get-Process rpw-launcher -ErrorAction SilentlyContinue | Where-Object {{ $_.Id -ne {} }} | Stop-Process -Force",
+        current_pid
+    );
+    let _ = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null())
+        .status();
 }
 
 #[cfg(windows)]
