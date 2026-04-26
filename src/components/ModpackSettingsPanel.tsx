@@ -95,9 +95,7 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
     }
   };
 
-  const isBuiltin = !isCustom;
-  const locked = page === "minigames";
-  const configLocked = isBuiltin;
+  void page;
 
   const [editingMemory, setEditingMemory] = useState(false);
   const [memoryInput, setMemoryInput] = useState(String(memory));
@@ -111,11 +109,15 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
   return (
     <div className="settings-panel modpack-settings-panel">
       <div className="settings-header">
-        <div>
+        <button className="back-icon-btn" onClick={onBack} title="Назад">
+          <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12.5 4.5L7 10l5.5 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+        <div style={{ flex: 1 }}>
           <h2>Настройки сборки</h2>
           <p>{name} · отдельные параметры модпака</p>
         </div>
-        <button className="settings-btn" onClick={onBack}>Назад</button>
       </div>
 
       <div className="modpack-settings-grid">
@@ -156,22 +158,29 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
         <div className="admin-card wide">
           <label>Выделение ОЗУ (МБ)</label>
           <div className="memory-row">
-            <input type="range" min={1024} max={16384} step={512} value={memory} onChange={(e) => {
-              setMemory(Number(e.target.value));
-              setMemoryInput(e.target.value);
-            }} className="ram-slider" />
-            
+            <input type="range" min={1024} max={16384} step={512} value={memory}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setMemory(next);
+                setMemoryInput(String(next));
+              }}
+              className="ram-slider"
+              style={{ ["--slider-pct" as any]: `${Math.round(((memory - 1024) / (16384 - 1024)) * 100)}%` }}
+            />
+
             {editingMemory ? (
               <input
                 className="memory-input"
                 autoFocus
+                inputMode="numeric"
+                size={Math.max(4, memoryInput.length + 2)}
                 value={memoryInput}
                 onChange={(e) => setMemoryInput(e.target.value)}
                 onBlur={handleMemoryInputBlur}
                 onKeyDown={(e) => e.key === "Enter" && handleMemoryInputBlur()}
               />
             ) : (
-              <span className="memory-chip clickable" onClick={() => setEditingMemory(true)}>
+              <span className="memory-chip clickable" onClick={() => setEditingMemory(true)} title="Нажмите, чтобы ввести вручную">
                 {memory} МБ ({(memory / 1024).toFixed(1)} ГБ)
               </span>
             )}
@@ -189,7 +198,12 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
           <label>Папка сборки</label>
           <div className="folder-row">
             <code>{gameDir || "Папка ещё не создана"}</code>
-            <button className="settings-btn" onClick={openFolder}>Открыть папку</button>
+            <button className="folder-icon-btn" onClick={openFolder} title="Открыть папку сборки">
+              <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 5.5A1.5 1.5 0 013.5 4h3.382a1.5 1.5 0 011.06.44l.94.94H16.5A1.5 1.5 0 0118 7v8a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 012 15V5.5z"
+                  stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
