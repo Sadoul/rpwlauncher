@@ -129,6 +129,11 @@ pub fn run() {
             builds::get_build_manifest,
             builds::commit_build_manifest,
             builds::upload_build_mod,
+            builds::get_build_download_dir,
+            builds::set_build_download_dir,
+            builds::download_build_mod_file,
+            builds::download_build_bundle,
+
             // Launcher
             launcher::launch_game,
             launcher::get_launch_progress,

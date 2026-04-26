@@ -1160,8 +1160,32 @@ button { font-family: inherit; }
 .admin-mod-enabled input:checked::before { left: 23px; }
 .admin-mod-enabled span { font-weight: 800; font-size: 12px; color: var(--text); }
 
+.admin-download-dir-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.admin-download-dir-path {
+  margin-top: 4px;
+  max-width: 560px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  word-break: break-all;
+}
+[data-theme="light"] .admin-download-dir-path {
+  color: #24324a;
+}
+
 /* Drop Zone */
 .admin-drop-zone {
+
   border: 2px dashed rgba(255, 181, 70, 0.3);
   background: rgba(255, 181, 70, 0.05);
   padding: 30px;

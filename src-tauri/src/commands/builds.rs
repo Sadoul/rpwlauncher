@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::io::Write;
+
 
 const BUILD_BRANCH: &str = "main";
 const USER_AGENT: &str = "RPWLauncher-BuildAdmin";
@@ -39,6 +41,42 @@ struct GitHubContentResponse {
 }
 
 fn default_enabled() -> bool { true }
+
+fn launcher_data_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".rpworld")
+}
+
+fn download_dir_file() -> PathBuf {
+    launcher_data_dir().join("download_dir.txt")
+}
+
+fn default_download_dir() -> PathBuf {
+    dirs::download_dir()
+        .unwrap_or_else(|| launcher_data_dir())
+        .join("RPWorld Downloads")
+}
+
+fn read_download_dir() -> PathBuf {
+    let file = download_dir_file();
+    fs::read_to_string(file)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(default_download_dir)
+}
+
+fn safe_file_name(name: &str) -> String {
+    name.chars()
+        .map(|ch| match ch {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            _ => ch,
+        })
+        .collect()
+}
+
 
 fn repo_for_build(build: &str) -> Result<&'static str, String> {
     match build.to_lowercase().as_str() {
@@ -237,3 +275,74 @@ pub async fn upload_build_mod(build: String, github_token: String, file_path: St
         enabled: true,
     })
 }
+
+#[tauri::command]
+pub fn get_build_download_dir() -> Result<String, String> {
+    Ok(read_download_dir().to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn set_build_download_dir(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Путь сохранения пустой".to_string());
+    }
+    let dir = PathBuf::from(trimmed);
+    fs::create_dir_all(&dir).map_err(|e| format!("Не удалось создать папку сохранения: {e}"))?;
+    let config_dir = launcher_data_dir();
+    fs::create_dir_all(&config_dir).map_err(|e| format!("Не удалось создать папку настроек: {e}"))?;
+    fs::write(download_dir_file(), dir.to_string_lossy().as_bytes())
+        .map_err(|e| format!("Не удалось сохранить путь: {e}"))
+}
+
+#[tauri::command]
+pub async fn download_build_mod_file(mod_entry: BuildFileEntry) -> Result<String, String> {
+    let target_dir = read_download_dir();
+    fs::create_dir_all(&target_dir).map_err(|e| format!("Не удалось создать папку сохранения: {e}"))?;
+    let target_path = target_dir.join(safe_file_name(&mod_entry.name));
+
+    let client = github_client()?;
+    let response = client
+        .get(&mod_entry.url)
+        .send()
+        .await
+        .map_err(|e| format!("Не удалось скачать мод: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("Скачивание мода вернуло HTTP {}", response.status()));
+    }
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let mut file = fs::File::create(&target_path)
+        .map_err(|e| format!("Не удалось создать файл {}: {e}", target_path.display()))?;
+    file.write_all(&bytes).map_err(|e| format!("Не удалось записать мод: {e}"))?;
+    Ok(target_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn download_build_bundle(build: String, manifest: BuildManifest) -> Result<String, String> {
+    let target_dir = read_download_dir().join(safe_file_name(&build));
+    let mods_dir = target_dir.join("mods");
+    fs::create_dir_all(&mods_dir).map_err(|e| format!("Не удалось создать папку сборки: {e}"))?;
+    let manifest_path = target_dir.join("manifest.json");
+    let manifest_bytes = serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?;
+    fs::write(&manifest_path, manifest_bytes).map_err(|e| format!("Не удалось записать manifest: {e}"))?;
+
+    let client = github_client()?;
+    let mut downloaded = 0usize;
+    for mod_entry in manifest.mods.iter().filter(|mod_entry| mod_entry.enabled) {
+        let response = client
+            .get(&mod_entry.url)
+            .send()
+            .await
+            .map_err(|e| format!("Не удалось скачать {}: {e}", mod_entry.name))?;
+        if !response.status().is_success() {
+            return Err(format!("{}: HTTP {}", mod_entry.name, response.status()));
+        }
+        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+        fs::write(mods_dir.join(safe_file_name(&mod_entry.name)), bytes)
+            .map_err(|e| format!("Не удалось записать {}: {e}", mod_entry.name))?;
+        downloaded += 1;
+    }
+
+    Ok(format!("Сборка сохранена в {} (модов: {downloaded})", target_dir.display()))
+}
+

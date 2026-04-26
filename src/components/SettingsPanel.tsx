@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import { motion, AnimatePresence } from "framer-motion";
@@ -81,10 +81,30 @@ export default function SettingsPanel({
   const [logContent, setLogContent] = useState("");
   const [showLog, setShowLog] = useState(false);
   const [logPath, setLogPath] = useState("");
+  const [buildDownloadDir, setBuildDownloadDir] = useState("");
+
+  useEffect(() => {
+    invoke<string>("get_build_download_dir")
+      .then(setBuildDownloadDir)
+      .catch(() => {});
+  }, []);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(""), 3000);
+  };
+
+  const handleChooseBuildDownloadDir = async () => {
+    try {
+      const selected = await dialogOpen({ directory: true, multiple: false, title: "Выберите папку сохранения сборок" });
+      if (typeof selected === "string") {
+        await invoke("set_build_download_dir", { path: selected });
+        setBuildDownloadDir(selected);
+        showToast("Папка сохранения обновлена");
+      }
+    } catch (e) {
+      showToast("Ошибка: " + String(e));
+    }
   };
 
   // Logging
@@ -396,6 +416,13 @@ export default function SettingsPanel({
           Все данные хранятся в: <code style={{ opacity: 0.8 }}>%APPDATA%\.rpworld</code>
         </div>
         <Btn onClick={handleOpenDataFolder}>Открыть папку данных</Btn>
+      </Section>
+
+      <Section title="Скачивание сборок">
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10, wordBreak: "break-all" }}>
+          Папка сохранения модов и сборок: <code style={{ opacity: 0.9 }}>{buildDownloadDir || "не выбрана"}</code>
+        </div>
+        <Btn onClick={handleChooseBuildDownloadDir}>Изменить папку сохранения</Btn>
       </Section>
 
       {/* Launcher update */}

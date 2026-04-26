@@ -3329,7 +3329,7 @@ dependencies = [
 
 [[package]]
 name = "rpw-launcher"
-version = "2.51.0"
+version = "2.55.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",

@@ -47,19 +47,35 @@ export default function AdminPanel({ username }: Props) {
   const [uploadingMod, setUploadingMod] = useState(false);
   const [modSearch, setModSearch] = useState("");
   const [availableVersions, setAvailableVersions] = useState<string[]>([]);
+  const [downloadDir, setDownloadDir] = useState("");
+
 
   useEffect(() => {
     load();
     loadToken();
     loadVersions();
+    loadDownloadDir();
   }, []);
 
   const loadVersions = async () => {
     try {
-      const resp = await invoke<any[]>("get_versions");
-      setAvailableVersions(resp.map(v => v.id));
-    } catch { /* fallback to manual input if failed */ }
+      const resp = await invoke<any[]>("get_mc_versions");
+      const releaseVersions = resp
+        .filter(v => (v.version_type ?? v.type) === "release")
+        .map(v => v.id);
+
+      setAvailableVersions(releaseVersions);
+    } catch {
+      setAvailableVersions([]);
+    }
   };
+
+  const loadDownloadDir = async () => {
+    try {
+      setDownloadDir(await invoke<string>("get_build_download_dir"));
+    } catch { /* ignore */ }
+  };
+
 
   useEffect(() => {
     if (githubToken.trim()) loadManifest(activeBuild);
@@ -167,14 +183,41 @@ export default function AdminPanel({ username }: Props) {
     setManifest(prev => prev ? { ...prev, mods: prev.mods.filter(m => m.name !== mod.name) } : prev);
   };
 
-  const downloadMod = (mod: BuildFileEntry) => window.open(mod.url, "_blank");
-
-  const downloadBuild = () => {
-    if (!manifest) return;
-    manifest.mods.forEach(mod => {
-      if (mod.enabled) window.open(mod.url, "_blank");
-    });
+  const downloadMod = async (mod: BuildFileEntry) => {
+    setMessage(`Скачиваю ${mod.name}...`);
+    try {
+      const path = await invoke<string>("download_build_mod_file", { modEntry: mod });
+      setMessage(`Мод сохранён: ${path}`);
+    } catch (e) {
+      setMessage(String(e));
+    }
   };
+
+  const downloadBuild = async () => {
+    if (!manifest) return;
+    setMessage(`Скачиваю сборку ${activeBuild}...`);
+    try {
+      const result = await invoke<string>("download_build_bundle", { build: activeBuild, manifest });
+      setMessage(result);
+    } catch (e) {
+      setMessage(String(e));
+    }
+  };
+
+  const chooseDownloadDir = async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({ directory: true, multiple: false, title: "Выберите папку сохранения" });
+      if (typeof selected === "string") {
+        await invoke("set_build_download_dir", { path: selected });
+        setDownloadDir(selected);
+        setMessage(`Папка сохранения: ${selected}`);
+      }
+    } catch (e) {
+      setMessage(String(e));
+    }
+  };
+
 
   const uploadModPath = async (path: string) => {
     if (!manifest || !path) return;
@@ -299,10 +342,21 @@ export default function AdminPanel({ username }: Props) {
           {githubToken.trim() && !manifest && <div className="admin-message">Загружаю manifest сборки...</div>}
           {manifest && (
             <>
-              <div className="admin-build-settings" style={{ marginBottom: 24 }}>
+              <div className="admin-download-dir-row">
+                <div>
+                  <div className="admin-account-name">Папка сохранения</div>
+                  <div className="admin-download-dir-path">{downloadDir || "Не выбрана"}</div>
+                </div>
+                <button className="settings-btn compact" onClick={chooseDownloadDir}>Изменить</button>
+              </div>
+
+              <div className="admin-build-settings" style={{ marginBottom: 28 }}>
                 <label>
                   Версия Minecraft
                   <select className="admin-password-input" value={manifest.minecraft_version} onChange={e => updateManifest({ minecraft_version: e.target.value })}>
+                    {!availableVersions.includes(manifest.minecraft_version) && (
+                      <option value={manifest.minecraft_version}>{manifest.minecraft_version}</option>
+                    )}
                     {availableVersions.length > 0 ? (
                       availableVersions.map(v => <option key={v} value={v}>{v}</option>)
                     ) : (
@@ -310,13 +364,15 @@ export default function AdminPanel({ username }: Props) {
                     )}
                   </select>
                 </label>
+
                 <label>Загрузчик<select className="admin-password-input" value={manifest.loader} onChange={e => updateManifest({ loader: e.target.value })}>{LOADERS.map(loader => <option key={loader} value={loader}>{loader}</option>)}</select></label>
                 <label>Версия загрузчика<input className="admin-password-input" value={manifest.loader_version || ""} onChange={e => updateManifest({ loader_version: e.target.value })} placeholder="можно пусто = latest" /></label>
               </div>
 
               <div className="admin-drop-zone" onDragOver={e => e.preventDefault()} onDrop={onDropMod}>
-                {uploadingMod ? "Загрузка мода на GitHub..." : "Перетащите .jar ��оды сюда (или на любой ряд ниже), чтобы добавить в сборку"}
+                {uploadingMod ? "Загрузка мода на GitHub..." : "Перетащите .jar моды сюда или на список ниже, чтобы добавить в сборку"}
               </div>
+
 
               <div className="admin-mod-search">
                 <input value={modSearch} onChange={e => setModSearch(e.target.value)} placeholder={`Поиск по модам... (всего: ${manifest.mods.length})`} />
