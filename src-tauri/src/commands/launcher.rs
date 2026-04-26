@@ -182,6 +182,9 @@ fn file_sha1(path: &PathBuf) -> Result<String, String> {
 }
 
 async fn download_file(client: &reqwest::Client, url: &str, path: &PathBuf) -> Result<(), String> {
+    if LAUNCH_CANCELLED.load(Ordering::SeqCst) {
+        return Err("Запуск Minecraft отменён".to_string());
+    }
     if path.exists() {
         log(&format!("[download] Already exists, skipping: {}", path.display()));
         return Ok(());
@@ -200,6 +203,10 @@ async fn download_file(client: &reqwest::Client, url: &str, path: &PathBuf) -> R
 
     if !response.status().is_success() {
         return Err(format!("[download] HTTP {} for URL: {}", response.status(), url));
+    }
+
+    if LAUNCH_CANCELLED.load(Ordering::SeqCst) {
+        return Err("Запуск Minecraft отменён".to_string());
     }
 
     let bytes = response
@@ -341,6 +348,7 @@ async fn ensure_vanilla(
     mc_dir: &PathBuf,
     mc_version: &str,
 ) -> Result<(), String> {
+    check_launch_cancelled()?;
     let version_dir = mc_dir.join("versions").join(mc_version);
     let version_json_path = version_dir.join(format!("{}.json", mc_version));
 
@@ -491,6 +499,7 @@ async fn run_modded_installer(
     loader: &str,
     mc_version: &str,
 ) -> Result<String, String> {
+    check_launch_cancelled()?;
     // Forge installer requires launcher_profiles.json in the game dir.
     // Without it: "There is no Minecraft launcher profile, run the launcher first!"
     let profiles_path = mc_dir.join("launcher_profiles.json");
@@ -508,6 +517,7 @@ async fn run_modded_installer(
     set_progress(loader, 1.0, 4.0, &format!("Скачивание {} installer...", loader));
     log(&format!("[{}] Installer URL: {}", loader, installer_url));
     download_file(client, installer_url, &installer_path).await?;
+    check_launch_cancelled()?;
 
     let installer_size = fs::metadata(&installer_path)
         .map(|metadata| metadata.len())
@@ -519,6 +529,7 @@ async fn run_modded_installer(
         installer_size
     ));
 
+    check_launch_cancelled()?;
     set_progress(loader, 2.0, 4.0, &format!("Запуск {} installer в фоне...", loader));
     log(&format!(
         "[{}] Running hidden: {} -Djava.awt.headless=true -jar {} --installClient in {}",
@@ -607,6 +618,7 @@ async fn install_forge(
     mc_dir: &PathBuf,
     mc_version: &str,
 ) -> Result<String, String> {
+    check_launch_cancelled()?;
     set_progress("forge", 0.0, 4.0, "Поиск последней версии Forge...");
     let forge_ver = get_latest_forge_version(client, mc_version).await?;
     log(&format!("[forge] Will install: {}", forge_ver));
@@ -626,6 +638,7 @@ async fn install_neoforge(
     mc_dir: &PathBuf,
     version_str: &str,
 ) -> Result<String, String> {
+    check_launch_cancelled()?;
     set_progress("neoforge", 0.0, 4.0, "Поиск последней версии NeoForge...");
 
     let neo_ver = get_latest_neoforge_version(client, version_str).await?;
@@ -713,6 +726,7 @@ async fn install_fabric(
     mc_dir: &PathBuf,
     mc_version: &str,
 ) -> Result<String, String> {
+    check_launch_cancelled()?;
     set_progress("fabric", 0.0, 3.0, "Получение информации о Fabric loader...");
 
     // Get stable loader versions
@@ -775,6 +789,15 @@ pub fn is_game_running() -> bool {
 pub fn cancel_launch() {
     log("[launch] Cancel requested by user");
     LAUNCH_CANCELLED.store(true, Ordering::SeqCst);
+    // Reset progress so the UI no longer shows Скачивание/Установка after cancel.
+    if let Ok(mut p) = LAUNCH_PROGRESS.lock() {
+        *p = Some(LaunchProgress {
+            stage: "done".into(),
+            progress: 0.0,
+            total: 0.0,
+            message: "Запуск отменён".into(),
+        });
+    }
 }
 
 fn check_launch_cancelled() -> Result<(), String> {

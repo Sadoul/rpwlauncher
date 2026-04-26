@@ -268,6 +268,7 @@ export default function GamePanel({
     setLaunching(false);
     setStatus("ready");
     setProgress(null);
+    setDownloadProgress(null);
     if (progressInterval.current) clearInterval(progressInterval.current);
     setCancelling(false);
   };
