@@ -310,6 +310,7 @@ pub async fn install_custom_modpack(
     loader_version: String,
     max_memory: u32,
     jvm_args: String,
+    previous_name: Option<String>,
 ) -> Result<(), String> {
     use std::fs;
 
@@ -318,8 +319,22 @@ pub async fn install_custom_modpack(
         return Err("Введите корректное название модпака".to_string());
     }
 
-    // Create modpack directory
     let modpacks_dir = custom_modpacks_root().join(&dir_name);
+
+    // If renaming an existing modpack, move the previous folder instead of creating new.
+    if let Some(prev) = previous_name.as_ref() {
+        let prev_dir_name = sanitize_modpack_dir_name(prev);
+        if !prev_dir_name.is_empty() && prev_dir_name != dir_name {
+            let prev_dir = custom_modpacks_root().join(&prev_dir_name);
+            if prev_dir.exists() {
+                if modpacks_dir.exists() {
+                    return Err(format!("Модпак с именем «{name}» уже существует. Выберите другое название."));
+                }
+                fs::rename(&prev_dir, &modpacks_dir)
+                    .map_err(|e| format!("Не удалось переименовать модпак: {e}"))?;
+            }
+        }
+    }
 
     fs::create_dir_all(&modpacks_dir)
         .map_err(|e| format!("Не удалось создать папку модпака: {e}"))?;

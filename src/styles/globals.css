@@ -2115,5 +2115,6 @@ button { font-family: inherit; }
 .modpack-settings-actions { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
 .modpack-settings-actions .settings-btn { padding: 12px 22px; font-size: 14px; border-radius: 12px; }
 .modpack-settings-actions .settings-btn.danger { background: linear-gradient(135deg, var(--accent-red), color-mix(in srgb, var(--accent-red) 70%, #000)); color: #fff; box-shadow: 0 4px 18px color-mix(in srgb, var(--accent-red) 35%, transparent); }
+.modpack-settings-message { margin-top: 28px; padding: 14px 18px; border-radius: 12px; background: var(--bg-glass-solid); border: 1px solid var(--border); color: var(--text); font-size: 13px; }
 
 

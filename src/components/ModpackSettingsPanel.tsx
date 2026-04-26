@@ -36,6 +36,9 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
   const [jvmArgs, setJvmArgs] = useState(custom?.jvm_args ?? builtin?.jvmArgs ?? "");
   const [gameDir, setGameDir] = useState(custom?.game_dir ?? "");
   const [message, setMessage] = useState("");
+  const [mcVersionOptions, setMcVersionOptions] = useState<string[]>([]);
+  const [loaderVersionOptions, setLoaderVersionOptions] = useState<string[]>([]);
+  const [loadingLoaderVersions, setLoadingLoaderVersions] = useState(false);
 
   useEffect(() => {
     if (!isCustom && (page === "rpworld" || page === "minigames")) {
@@ -44,6 +47,35 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
         .catch(() => {});
     }
   }, [isCustom, page]);
+
+  useEffect(() => {
+    if (!isCustom) return;
+    invoke<Array<{ id: string; type?: string; version_type?: string }>>("get_mc_versions")
+      .then((list) => {
+        const releases = list.filter((v) => (v.type ?? v.version_type) === "release").map((v) => v.id);
+        setMcVersionOptions(releases);
+      })
+      .catch(() => setMcVersionOptions([]));
+  }, [isCustom]);
+
+  useEffect(() => {
+    if (!isCustom) return;
+    if (loader === "vanilla") {
+      setLoaderVersionOptions([]);
+      setLoaderVersion("");
+      return;
+    }
+    setLoadingLoaderVersions(true);
+    invoke<Array<{ id: string }>>("get_loader_versions", { loader, mcVersion })
+      .then((list) => {
+        const ids = list.map((v) => v.id);
+        setLoaderVersionOptions(ids);
+        if (ids.length > 0 && !ids.includes(loaderVersion)) setLoaderVersion(ids[0]);
+      })
+      .catch(() => setLoaderVersionOptions([]))
+      .finally(() => setLoadingLoaderVersions(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCustom, loader, mcVersion]);
 
   const openFolder = async () => {
     try {
@@ -71,6 +103,7 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
         loaderVersion,
         maxMemory: memory,
         jvmArgs,
+        previousName: customName || undefined,
       });
       setMessage("Настройки модпака сохранены");
       onChanged();
@@ -144,14 +177,29 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
         {isCustom && (
           <div className="admin-card">
             <label>Версия Minecraft</label>
-            <input value={mcVersion} onChange={(e) => setMcVersion(e.target.value)} placeholder="1.20.1" />
+            <select value={mcVersion} onChange={(e) => setMcVersion(e.target.value)}>
+              {!mcVersionOptions.includes(mcVersion) && mcVersion && (
+                <option value={mcVersion}>{mcVersion}</option>
+              )}
+              {mcVersionOptions.map((id) => (
+                <option key={id} value={id}>{id}</option>
+              ))}
+            </select>
           </div>
         )}
 
-        {isCustom && (
+        {isCustom && loader !== "vanilla" && (
           <div className="admin-card">
             <label>Версия загрузчика</label>
-            <input value={loaderVersion} onChange={(e) => setLoaderVersion(e.target.value)} placeholder="latest" />
+            <select value={loaderVersion} onChange={(e) => setLoaderVersion(e.target.value)} disabled={loadingLoaderVersions}>
+              {loadingLoaderVersions && <option>Загрузка...</option>}
+              {!loadingLoaderVersions && loaderVersion && !loaderVersionOptions.includes(loaderVersion) && (
+                <option value={loaderVersion}>{loaderVersion}</option>
+              )}
+              {!loadingLoaderVersions && loaderVersionOptions.map((id) => (
+                <option key={id} value={id}>{id}</option>
+              ))}
+            </select>
           </div>
         )}
 
@@ -212,7 +260,7 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
         <button className="settings-btn primary large-btn" onClick={save}>Сохранить настройки</button>
         <button className="settings-btn danger large-btn" onClick={deletePack}>Удалить сборку с компьютера</button>
       </div>
-      {message && <div className="admin-message">{message}</div>}
+      {message && <div className="admin-message modpack-settings-message">{message}</div>}
     </div>
   );
 }
