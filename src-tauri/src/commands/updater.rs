@@ -2,13 +2,15 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+#[cfg(windows)]
+const DETACHED_PROCESS: u32 = 0x00000008;
 use tauri::Emitter;
 
 use super::logger::log as launcher_log;
@@ -336,21 +338,30 @@ fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), S
     fs::write(&script_path, script.as_bytes()).map_err(|e| e.to_string())?;
     update_log(&format!("[updater] Hidden updater script written: {}", script_path.display()));
 
-    let mut updater_command = Command::new("powershell");
-    updater_command.args([
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-WindowStyle",
-        "Hidden",
-        "-File",
-        script_path.to_str().unwrap_or(""),
-    ]);
     #[cfg(windows)]
-    updater_command.creation_flags(CREATE_NO_WINDOW);
+    let powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    #[cfg(not(windows))]
+    let powershell = "powershell";
+
+    let mut updater_command = Command::new(powershell);
     updater_command
-        .spawn()
-        .map_err(|e| e.to_string())?;
+        .args([
+            "-NoLogo",
+            "-NonInteractive",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            script_path.to_str().unwrap_or(""),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    updater_command.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS);
+    updater_command.spawn().map_err(|e| e.to_string())?;
     update_log("[updater] Hidden updater script started, app will exit in 2 seconds");
 
     tokio::spawn(async move {

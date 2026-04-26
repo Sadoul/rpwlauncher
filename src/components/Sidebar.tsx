@@ -144,6 +144,7 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
     pointerId: number;
   } | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
+  const suppressClickRef = useRef(false);
 
   const reorderToIndex = (sourceId: string, insertionIndex: number) => {
     if (!sourceId) return;
@@ -169,8 +170,8 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
 
     for (let index = 0; index < visibleItems.length; index += 1) {
       const rect = visibleItems[index].getBoundingClientRect();
-      const midpoint = rect.top + rect.height / 2;
-      if (y < midpoint) return index;
+      const insertionLine = rect.top + rect.height * 0.72;
+      if (y < insertionLine) return index;
     }
     return visibleItems.length;
   };
@@ -201,6 +202,10 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
   const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
     const state = dragStateRef.current;
     if (!state || state.pointerId !== event.pointerId) return;
+    if ((event.buttons & 1) === 0) {
+      finishDrag(event, false);
+      return;
+    }
     if (!state.started) {
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
@@ -225,8 +230,10 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
     if (state.started && commit) {
       // Order is already updated live during pointer move.
     }
+    if (state.started) suppressClickRef.current = true;
     setDragId(null);
     setOverId(null);
+    window.setTimeout(() => { suppressClickRef.current = false; }, 120);
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => finishDrag(event, true);
@@ -265,7 +272,7 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
             data-nav-id={item.id}
             className={`nav-item${currentPage === item.id ? " active" : ""}${item.locked ? " locked" : ""}${dragId === item.id ? " dragging" : ""}${overId === item.id && dragId && dragId !== item.id ? " drag-over" : ""}`}
             onClick={() => {
-              if (dragId) return; // suppress click after drag
+              if (dragId || suppressClickRef.current) return; // suppress click after drag
               if (!item.locked) onPageChange(item.id);
             }}
             onContextMenu={(event) => openContextMenu(event, item)}
