@@ -262,7 +262,10 @@ export default function AdminPanel({ username }: Props) {
               const visible = !!showPasswords[account.username];
               return (
                 <div className="admin-account-row" key={account.username}>
-                  <div className="admin-account-name">{account.username}</div>
+                  <div className="admin-account-name">
+                    {account.username}
+                    {account.username.toLowerCase() === ADMIN_NAME.toLowerCase() && <span className="admin-mod-count" style={{ fontSize: 9, marginLeft: 6 }}>ВЫ</span>}
+                  </div>
                   <input className="admin-password-input" type={visible ? "text" : "password"} value={account.password} onChange={e => updatePassword(index, e.target.value)} />
                   <button className="settings-btn compact" onClick={() => setShowPasswords(prev => ({ ...prev, [account.username]: !visible }))}>{visible ? "Скрыть" : "Показать"}</button>
                   <button className="settings-btn danger compact" disabled={account.username.toLowerCase() === ADMIN_NAME.toLowerCase()} onClick={() => deleteAccount(account)}>Удалить</button>
