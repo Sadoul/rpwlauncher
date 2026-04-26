@@ -1237,12 +1237,19 @@ button { font-family: inherit; }
 }
 .admin-mod-search::before { display: none; }
 
-/* Floating Actions */
+/* Build actions */
 .admin-build-floating-actions {
-  position: sticky; bottom: 0; padding: 20px 0;
-  background: linear-gradient(to top, var(--bg) 80%, transparent);
-  display: flex; gap: 12px; justify-content: flex-end;
+  position: static;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
 }
+
 
 /* Settings buttons */
 .settings-btn {
@@ -1668,10 +1675,23 @@ button { font-family: inherit; }
 /* ══════════════════════════════════════════════════════════════
    TOAST NOTIFICATION
    ══════════════════════════════════════════════════════════════ */
-.notification {
-  position: fixed; top: 24px; right: 24px;
+.notification-stack {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  width: min(520px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 99999;
+  pointer-events: none;
+}
 
-  max-width: min(520px, calc(100vw - 48px));
+.notification {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+
   padding: 14px 18px;
   background: linear-gradient(135deg, #050814 0%, #0d1630 100%);
   border: 1px solid #ffb546;
@@ -1681,8 +1701,10 @@ button { font-family: inherit; }
   font-weight: 800;
   line-height: 1.45;
   z-index: 99999;
+  pointer-events: auto;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
+
 
 [data-theme="light"] .notification {
   background: linear-gradient(135deg, #ffffff 0%, #fff7e8 100%);

@@ -45,7 +45,8 @@ export default function AdminPanel({ username, isOwner }: Props) {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [githubToken, setGithubToken] = useState("");
   const [message, setMessage] = useState("");
-  const [toast, setToast] = useState("");
+  const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
+
 
   const [saving, setSaving] = useState(false);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
@@ -105,9 +106,11 @@ export default function AdminPanel({ username, isOwner }: Props) {
 
   const notify = (text: string) => {
     setMessage(text);
-    setToast(text);
-    window.setTimeout(() => setToast(""), 4500);
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setToasts(prev => [...prev, { id, text }].slice(-4));
+    window.setTimeout(() => setToasts(prev => prev.filter(item => item.id !== id)), 4500);
   };
+
 
 
   const load = async () => {
@@ -208,10 +211,14 @@ export default function AdminPanel({ username, isOwner }: Props) {
   };
 
   const deleteMod = (mod: BuildFileEntry) => {
-    const ok = window.confirm(`Удалить мод ${mod.name} из списка сборки? Файл в GitHub пока останется, но клиент перестанет его скачивать.`);
+    const ok = window.confirm(
+      `Удалить мод из сборки?\n\n${mod.name}\n\nФайл останется в GitHub, но после сохранения manifest клиент перестанет скачивать этот мод.`
+    );
     if (!ok) return;
     setManifest(prev => prev ? { ...prev, mods: prev.mods.filter(m => m.name !== mod.name) } : prev);
+    notify(`Мод ${mod.name} удалён из списка. Нажмите commit, чтобы сохранить изменение.`);
   };
+
 
   const downloadMod = async (mod: BuildFileEntry) => {
     notify(`Скачиваю ${mod.name}...`);
@@ -498,7 +505,12 @@ export default function AdminPanel({ username, isOwner }: Props) {
       )}
 
       {message && <div className="admin-message">{message}</div>}
-      {toast && <div className="notification admin-toast">{toast}</div>}
+      {toasts.length > 0 && (
+        <div className="notification-stack admin-toast-stack">
+          {toasts.map(item => <div key={item.id} className="notification admin-toast">{item.text}</div>)}
+        </div>
+      )}
+
     </div>
 
   );
