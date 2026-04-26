@@ -57,7 +57,10 @@ export default function App() {
   const [maxMemory, setMaxMemory] = useState(4096);
   const [jvmArgs, setJvmArgs] = useState("");
   const [gpuMode, setGpuMode] = useState("auto");
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem("rpw_theme");
+    return saved === "dark" ? "dark" : "light";
+  });
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [notification, setNotification] = useState("");
   const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null);
@@ -237,6 +240,7 @@ export default function App() {
           <UpdateOverlay
             updateInfo={pendingUpdate}
             onSkip={() => setPendingUpdate(null)}
+            theme={theme}
           />
         )}
       </AnimatePresence>

@@ -24,6 +24,7 @@ interface UpdateProgress {
 interface UpdateOverlayProps {
   updateInfo: UpdateInfo;
   onSkip: () => void;
+  theme: "light" | "dark";
 }
 
 function formatSize(bytes: number): string {
@@ -37,7 +38,7 @@ function formatSpeed(kbs: number): string {
   return `${(kbs / 1024).toFixed(1)} МБ/с`;
 }
 
-export default function UpdateOverlay({ updateInfo }: UpdateOverlayProps) {
+export default function UpdateOverlay({ updateInfo, theme }: UpdateOverlayProps) {
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [started, setStarted] = useState(false);
   const [error, setError] = useState("");
@@ -79,6 +80,7 @@ export default function UpdateOverlay({ updateInfo }: UpdateOverlayProps) {
   return (
     <motion.div
       className="update-overlay"
+      data-theme={theme}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

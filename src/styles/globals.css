@@ -1312,6 +1312,15 @@ button { font-family: inherit; }
   display: flex; align-items: center; justify-content: center;
   background: var(--bg-primary);
 }
+.update-overlay[data-theme="dark"] {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(217, 119, 6, 0.13), transparent 35%),
+    radial-gradient(circle at 80% 70%, rgba(99, 102, 241, 0.10), transparent 35%),
+    #080807;
+}
+.update-overlay[data-theme="light"] {
+  background: var(--bg-primary);
+}
 
 /* animated bg orbs — use theme accent */
 .update-orbs { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
@@ -1343,6 +1352,11 @@ button { font-family: inherit; }
   border: 1px solid var(--border-hover);
   border-radius: 24px;
   box-shadow: var(--shadow-lg), 0 0 60px var(--accent-glow);
+}
+.update-overlay[data-theme="dark"] .update-content {
+  background: rgba(15, 15, 14, 0.88);
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.72), 0 0 70px rgba(217, 119, 6, 0.18);
 }
 
 /* icon rings use accent color */
