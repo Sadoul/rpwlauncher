@@ -45,6 +45,7 @@ export default function AdminPanel({ username }: Props) {
   const [activeBuild, setActiveBuild] = useState("rpworld");
   const [manifest, setManifest] = useState<BuildManifest | null>(null);
   const [uploadingMod, setUploadingMod] = useState(false);
+  const [modSearch, setModSearch] = useState("");
 
   useEffect(() => {
     load();
@@ -296,24 +297,31 @@ export default function AdminPanel({ username }: Props) {
               </div>
 
               <div className="admin-drop-zone" onDragOver={e => e.preventDefault()} onDrop={onDropMod}>
-                {uploadingMod ? "Загрузка мода..." : "Перетащите .jar мод сюда, чтобы загрузить его в GitHub"}
+                {uploadingMod ? "Загрузка мода на GitHub..." : "📦 Перетащите .jar моды сюда (или на любой ряд ниже), чтобы добавить в сборку"}
               </div>
 
-              <div className="admin-build-actions">
-                <button className="settings-btn" onClick={downloadBuild}>Скачать сборку</button>
-                <button className="settings-btn accent" onClick={commitManifest} disabled={saving || !githubToken.trim()}>Сохранить manifest</button>
+              <div className="admin-mod-search">
+                <input value={modSearch} onChange={e => setModSearch(e.target.value)} placeholder={`Поиск по модам... (всего: ${manifest.mods.length})`} />
               </div>
 
-              <div className="admin-mod-list">
-                {manifest.mods.map((mod, index) => (
+              <div className="admin-mod-list" onDragOver={e => e.preventDefault()} onDrop={onDropMod}>
+                {manifest.mods
+                  .map((mod, originalIndex) => ({ mod, originalIndex }))
+                  .filter(({ mod }) => mod.name.toLowerCase().includes(modSearch.toLowerCase().trim()))
+                  .map(({ mod, originalIndex }) => (
                   <div className="admin-mod-row" key={`${mod.name}-${mod.sha1}`}>
-                    <input className="admin-password-input" value={mod.name} onChange={e => updateMod(index, { name: e.target.value, path: `mods/${e.target.value}`, url: mod.url.replace(/mods\/[^/]+$/, `mods/${encodeURIComponent(e.target.value)}`) })} />
+                    <input className="admin-password-input" value={mod.name} onChange={e => updateMod(originalIndex, { name: e.target.value, path: `mods/${e.target.value}`, url: mod.url.replace(/mods\/[^/]+$/, `mods/${encodeURIComponent(e.target.value)}`) })} />
                     <div className="admin-mod-meta">{formatSize(mod.size)}</div>
-                    <label className="admin-mod-enabled"><input type="checkbox" checked={mod.enabled} onChange={e => updateMod(index, { enabled: e.target.checked })} /> Вкл.</label>
+                    <label className="admin-mod-enabled"><input type="checkbox" checked={mod.enabled} onChange={e => updateMod(originalIndex, { enabled: e.target.checked })} /><span>Вкл.</span></label>
                     <button className="settings-btn compact" onClick={() => downloadMod(mod)}>Скачать</button>
                     <button className="settings-btn danger compact" onClick={() => deleteMod(mod)}>Удалить</button>
                   </div>
                 ))}
+              </div>
+
+              <div className="admin-build-floating-actions">
+                <button className="settings-btn" onClick={downloadBuild}>Скачать сборку</button>
+                <button className="settings-btn accent" onClick={commitManifest} disabled={saving || !githubToken.trim()}>{saving ? "Отправка..." : "Подтвердить и отправить commit"}</button>
               </div>
             </>
           )}

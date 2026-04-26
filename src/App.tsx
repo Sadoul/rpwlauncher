@@ -74,7 +74,14 @@ export default function App() {
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("rpw_theme", theme);
+    invoke("save_theme", { theme }).catch(() => {});
   }, [theme]);
+
+  useEffect(() => {
+    invoke<string>("get_saved_theme").then(saved => {
+      if (saved === "dark" || saved === "light") setTheme(saved as Theme);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const preventDefaultContextMenu = (event: MouseEvent) => event.preventDefault();

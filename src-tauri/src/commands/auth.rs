@@ -64,6 +64,28 @@ fn get_admin_token_file() -> PathBuf {
     get_config_dir().join("admin_token.txt")
 }
 
+fn get_theme_file() -> PathBuf {
+    get_config_dir().join("theme.txt")
+}
+
+#[tauri::command]
+pub async fn get_saved_theme() -> Result<String, String> {
+    let path = get_theme_file();
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(path).map(|s| s.trim().to_string()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_theme(theme: String) -> Result<(), String> {
+    let value = theme.trim();
+    if value != "light" && value != "dark" {
+        return Err("Неверная тема".to_string());
+    }
+    fs::write(get_theme_file(), value).map_err(|e| e.to_string())
+}
+
 fn get_accounts_cache_file() -> PathBuf {
     get_config_dir().join("offline_accounts.rpwenc")
 }

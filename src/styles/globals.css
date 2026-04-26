@@ -951,29 +951,44 @@ button { font-family: inherit; }
   grid-template-columns: 1fr 1fr auto;
   gap: 10px;
   align-items: center;
+  padding: 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255,181,70,0.10), rgba(255,255,255,0.04));
+  border: 1px solid rgba(255,181,70,0.30);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
 }
-.admin-add-box .admin-account-name { grid-column: 1 / -1; margin-bottom: 4px; }
+.admin-add-box .admin-account-name { grid-column: 1 / -1; margin-bottom: 4px; color: #FFB546; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; }
 .admin-account-row {
   display: grid;
-  grid-template-columns: 140px 1fr auto auto;
+  grid-template-columns: 160px 1fr auto auto;
   gap: 10px;
   align-items: center;
-  padding: 10px 12px;
-  border-radius: var(--r-sm);
-  background: rgba(0,0,0,0.28);
-  border: 1px solid var(--border);
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.10);
+  transition: all var(--ease);
 }
-.admin-account-name { font-weight: 800; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.admin-account-row:hover {
+  border-color: rgba(255,181,70,0.45);
+  background: linear-gradient(135deg, rgba(255,181,70,0.08), rgba(255,255,255,0.04));
+  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+.admin-account-name { font-weight: 900; color: #ffffff; font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
 .admin-password-input {
   width: 100%;
-  padding: 8px 10px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--border);
-  background: rgba(0,0,0,0.42);
-  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(10,12,18,0.65);
+  color: #ffffff;
   outline: none;
   font-size: 13px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  transition: all var(--ease);
 }
+.admin-password-input:focus { border-color: #FFB546; background: rgba(10,12,18,0.85); box-shadow: 0 0 0 3px rgba(255,181,70,0.15); }
+.admin-password-input::placeholder { color: rgba(255,255,255,0.35); font-family: inherit; }
 .settings-btn.compact { padding: 8px 10px; min-width: 76px; font-size: 11px; }
 .settings-btn.danger { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
 .admin-message { white-space: pre-wrap; }
@@ -1043,22 +1058,103 @@ button { font-family: inherit; }
   margin-bottom: 14px;
   font-weight: 800;
 }
-.admin-mod-list { display: grid; gap: 8px; }
+.admin-mod-search {
+  position: relative;
+  margin-bottom: 12px;
+}
+.admin-mod-search input {
+  width: 100%;
+  padding: 12px 14px 12px 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(10,12,18,0.65);
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: all var(--ease);
+}
+.admin-mod-search input:focus { border-color: #FFB546; box-shadow: 0 0 0 3px rgba(255,181,70,0.15); }
+.admin-mod-search::before {
+  content: "🔍";
+  position: absolute;
+  left: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 16px;
+  pointer-events: none;
+}
+.admin-mod-count {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(52,211,153,0.15);
+  color: #34D399;
+  font-size: 11px;
+  font-weight: 900;
+  border: 1px solid rgba(52,211,153,0.30);
+}
+.admin-mod-list { display: grid; gap: 8px; max-height: 50vh; overflow-y: auto; padding-right: 6px; }
 .admin-mod-row {
   display: grid;
-  grid-template-columns: 1fr 80px 70px auto auto;
-  gap: 8px;
+  grid-template-columns: 1fr auto auto auto auto;
+  gap: 12px;
   align-items: center;
-  padding: 8px;
+  padding: 12px 14px;
   border-radius: 12px;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.10);
+  background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.10);
+  transition: all var(--ease);
 }
-.admin-mod-meta,
-.admin-mod-enabled {
-  color: rgba(255,255,255,.78);
+.admin-mod-row:hover { border-color: rgba(255,181,70,0.40); background: linear-gradient(135deg, rgba(255,181,70,0.06), rgba(255,255,255,0.03)); }
+.admin-mod-meta {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,181,70,0.18);
+  color: #FFB546;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 900;
+  border: 1px solid rgba(255,181,70,0.35);
+  white-space: nowrap;
+}
+.admin-mod-enabled {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.admin-mod-enabled input[type="checkbox"] {
+  appearance: none;
+  width: 38px; height: 22px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.20);
+  position: relative;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.admin-mod-enabled input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: all var(--ease);
+}
+.admin-mod-enabled input[type="checkbox"]:checked { background: #34D399; border-color: #34D399; }
+.admin-mod-enabled input[type="checkbox"]:checked::after { left: 18px; }
+.admin-mod-enabled span { color: #fff; font-size: 12px; font-weight: 800; }
+.admin-build-floating-actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: 14px;
+  padding: 12px 0;
+  background: linear-gradient(180deg, transparent, var(--bg) 40%);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  z-index: 5;
 }
 
 /* Settings buttons */
