@@ -317,66 +317,26 @@ pub async fn update_launcher(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), String> {
-    let installer_str = installer.to_string_lossy().to_string();
-    let update_log_file = update_log_path().to_string_lossy().to_string();
+    update_log(&format!("[updater] Starting NSIS installer directly: {}", installer.display()));
 
-    let script_path = std::env::temp_dir().join("rpw_nsis_update.ps1");
-
-    // Hidden PowerShell updater steps:
-    //  1. Wait for parent process (this app) to exit cleanly
-    //  2. Run NSIS installer silently
-    //  3. Remove temporary files
-    let script = format!(
-        "$ErrorActionPreference = 'Continue'\r\n\
-         function Write-UpdateLog([string]$Message) {{ Add-Content -LiteralPath '{log}' -Value ('[' + (Get-Date) + '] ' + $Message) }}\r\n\
-         try {{\r\n\
-           Write-UpdateLog 'updater script started'\r\n\
-           Start-Sleep -Seconds 5\r\n\
-           Write-UpdateLog 'running installer: {installer}'\r\n\
-           $p = Start-Process -FilePath '{installer}' -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden\r\n\
-           Write-UpdateLog ('installer exit code: ' + $p.ExitCode)\r\n\
-           Remove-Item -LiteralPath '{installer}' -Force -ErrorAction SilentlyContinue\r\n\
-           Write-UpdateLog 'updater script finished'\r\n\
-         }} catch {{\r\n\
-           Write-UpdateLog ('updater script error: ' + $_.Exception.Message)\r\n\
-         }} finally {{\r\n\
-           Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\r\n\
-         }}\r\n",
-        installer = installer_str.replace('\'', "''"),
-        log = update_log_file.replace('\'', "''"),
-    );
-
-    fs::write(&script_path, script.as_bytes()).map_err(|e| e.to_string())?;
-    update_log(&format!("[updater] Hidden updater script written: {}", script_path.display()));
-
-    #[cfg(windows)]
-    let powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
-    #[cfg(not(windows))]
-    let powershell = "powershell";
-
-    let mut updater_command = Command::new(powershell);
-    updater_command
-        .args([
-            "-NoLogo",
-            "-NonInteractive",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-WindowStyle",
-            "Hidden",
-            "-File",
-            script_path.to_str().unwrap_or(""),
-        ])
+    let mut installer_command = Command::new(installer);
+    installer_command
+        .arg("/S")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+
     #[cfg(windows)]
-    updater_command.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS);
-    updater_command.spawn().map_err(|e| e.to_string())?;
-    update_log("[updater] Hidden updater script started, app will exit in 2 seconds");
+    installer_command.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS);
+
+    installer_command
+        .spawn()
+        .map_err(|e| format!("Не удалось запустить установщик обновления: {e}"))?;
+
+    update_log("[updater] NSIS installer started directly, app will exit in 1 second");
 
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         app.exit(0);
     });
 
