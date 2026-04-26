@@ -37,13 +37,22 @@ const ShieldIcon = () => (
   </svg>
 );
 
-const OfflineBadgeIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="3" y="4" width="18" height="16" rx="5" stroke="currentColor" strokeWidth="1.7" />
-    <circle cx="9" cy="11" r="2.2" stroke="currentColor" strokeWidth="1.6" />
-    <path d="M5.8 18c.8-2.2 2-3.4 3.2-3.4s2.4 1.2 3.2 3.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    <path d="M15 9.2h3.2M15 12h2.4M15 14.8h3.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    <path d="M18.7 4.9l1.6-1.6M20.4 6.8l2-1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.8" />
+const OfflineWifiOffIcon = () => (
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2 8.5C4.7 6.3 8.2 5 12 5c3.8 0 7.3 1.3 10 3.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" opacity="0.9"/>
+    <path d="M5.5 12c1.8-1.4 4-2.2 6.5-2.2 2.5 0 4.7.8 6.5 2.2" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" opacity="0.75"/>
+    <path d="M9 15.5c.9-.6 1.9-.9 3-.9s2.1.3 3 .9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" opacity="0.65"/>
+    <circle cx="12" cy="19" r="1.35" fill="currentColor"/>
+    <path d="M4 4l16 16" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+  </svg>
+);
+
+const RpworldAccountIcon = () => (
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="3" y="4" width="18" height="16" rx="5" stroke="currentColor" strokeWidth="1.8" />
+    <circle cx="9" cy="11" r="2.2" stroke="currentColor" strokeWidth="1.7" />
+    <path d="M5.8 18c.8-2.2 2-3.4 3.2-3.4s2.4 1.2 3.2 3.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    <path d="M15 9.2h3.2M15 12h2.4M15 14.8h3.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
   </svg>
 );
 
@@ -76,7 +85,7 @@ const itemVariants = {
 };
 
 export default function AuthPanel({ onLogin }: AuthPanelProps) {
-  const [selectedMethod, setSelectedMethod] = useState<"offline" | "microsoft" | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<"offline" | "rpworld" | "microsoft" | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [saveProfile, setSaveProfile] = useState(false);
@@ -90,7 +99,7 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
         setUsername(profile.username);
         setPassword(profile.password);
         setSaveProfile(true);
-        setSelectedMethod("offline");
+        setSelectedMethod("rpworld");
       })
       .catch(() => {});
   }, []);
@@ -113,7 +122,29 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
     setError("");
     try {
       const cleanUsername = username.trim();
-      const account = await invoke<Account>("login_offline", { username: cleanUsername, password });
+      const account = await invoke<Account>("login_offline", { username: cleanUsername });
+      onLogin(account);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRpworldLogin = async () => {
+    if (!username.trim() || username.length < 3) {
+      setError("Никнейм должен быть минимум 3 символа");
+      return;
+    }
+    if (!password.trim()) {
+      setError("Введите пароль RPWorld аккаунта");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const cleanUsername = username.trim();
+      const account = await invoke<Account>("login_rpworld", { username: cleanUsername, password });
       if (saveProfile) {
         await invoke("save_offline_profile", { username: cleanUsername, password }).catch(() => {});
       } else {
@@ -192,16 +223,35 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
           {/* Offline card */}
           <motion.button
             className={`auth-method-card${selectedMethod === "offline" ? " selected" : ""}`}
-            onClick={() => { setSelectedMethod("offline"); setError(""); }}
+            onClick={() => { setSelectedMethod("offline"); setError(""); setPassword(""); }}
             whileHover={{ scale: 1.015 }}
             whileTap={{ scale: 0.99 }}
           >
             <div className="auth-method-icon offline-icon">
-              <OfflineBadgeIcon />
+              <OfflineWifiOffIcon />
             </div>
             <div className="auth-method-info">
               <span className="auth-method-name">Офлайн режим</span>
-              <span className="auth-method-desc">Играйте без аккаунта Microsoft</span>
+              <span className="auth-method-desc">Без пароля, нельзя использовать занятые RPWorld ники</span>
+            </div>
+            <div className="auth-method-arrow">
+              <ArrowIcon />
+            </div>
+          </motion.button>
+
+          {/* RPWorld account card */}
+          <motion.button
+            className={`auth-method-card${selectedMethod === "rpworld" ? " selected" : ""}`}
+            onClick={() => { setSelectedMethod("rpworld"); setError(""); }}
+            whileHover={{ scale: 1.015 }}
+            whileTap={{ scale: 0.99 }}
+          >
+            <div className="auth-method-icon rpworld-icon">
+              <RpworldAccountIcon />
+            </div>
+            <div className="auth-method-info">
+              <span className="auth-method-name">RPWorld аккаунт</span>
+              <span className="auth-method-desc">Вход по нику и паролю из системы RPWorld</span>
             </div>
             <div className="auth-method-arrow">
               <ArrowIcon />
@@ -233,9 +283,9 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
 
         {/* Expanded form area */}
         <AnimatePresence mode="wait">
-          {selectedMethod === "offline" && (
+          {(selectedMethod === "offline" || selectedMethod === "rpworld") && (
             <motion.div
-              key="offline-form"
+              key={`${selectedMethod}-form`}
               className="auth-modal-form"
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
@@ -253,29 +303,33 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
                     placeholder="Введите никнейм..."
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleOfflineLogin()}
+                    onKeyDown={(e) => e.key === "Enter" && (selectedMethod === "rpworld" ? handleRpworldLogin() : handleOfflineLogin())}
                     maxLength={16}
                     autoFocus
                   />
                 </div>
-                <div className="auth-input-wrap" style={{ marginTop: 10 }}>
-                  <div className="auth-input-icon">
-                    <ShieldIcon />
-                  </div>
-                  <input
-                    type="password"
-                    className="auth-modal-input"
-                    placeholder="Пароль аккаунта..."
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleOfflineLogin()}
-                  />
-                </div>
+                {selectedMethod === "rpworld" && (
+                  <>
+                    <div className="auth-input-wrap" style={{ marginTop: 10 }}>
+                      <div className="auth-input-icon">
+                        <ShieldIcon />
+                      </div>
+                      <input
+                        type="password"
+                        className="auth-modal-input"
+                        placeholder="Пароль RPWorld аккаунта..."
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleRpworldLogin()}
+                      />
+                    </div>
 
-                <label className="auth-save-profile">
-                  <input type="checkbox" checked={saveProfile} onChange={(e) => setSaveProfile(e.target.checked)} />
-                  <span>Сохранить профиль для автозаполнения</span>
-                </label>
+                    <label className="auth-save-profile">
+                      <input type="checkbox" checked={saveProfile} onChange={(e) => setSaveProfile(e.target.checked)} />
+                      <span>Сохранить профиль для автозаполнения</span>
+                    </label>
+                  </>
+                )}
 
                 <AnimatePresence>
                   {error && (
@@ -292,8 +346,8 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
 
                 <motion.button
                   className="auth-modal-submit"
-                  onClick={handleOfflineLogin}
-                  disabled={loading || !username.trim() || !password.trim()}
+                  onClick={selectedMethod === "rpworld" ? handleRpworldLogin : handleOfflineLogin}
+                  disabled={loading || !username.trim() || (selectedMethod === "rpworld" && !password.trim())}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >

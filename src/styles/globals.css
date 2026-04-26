@@ -661,8 +661,8 @@ button { font-family: inherit; }
 
 /* Method icon container */
 .auth-method-icon {
-  width: 42px; height: 42px;
-  border-radius: 10px;
+  width: 52px; height: 52px;
+  border-radius: 14px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
@@ -675,6 +675,11 @@ button { font-family: inherit; }
   background: linear-gradient(135deg, rgba(0,230,118,0.12), rgba(0,230,118,0.04));
   border-color: rgba(0,230,118,0.15);
   color: var(--accent-green);
+}
+.auth-method-icon.rpworld-icon {
+  background: linear-gradient(135deg, rgba(255,181,70,0.16), rgba(255,181,70,0.05));
+  color: #ffb546;
+  border: 1px solid rgba(255,181,70,0.24);
 }
 .auth-method-icon.microsoft-icon {
   background: linear-gradient(135deg, rgba(37,99,235,0.1), rgba(37,99,235,0.03));

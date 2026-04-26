@@ -183,7 +183,7 @@ fn build_account(credential: &OfflineCredential) -> Account {
         username: credential.username.clone(),
         uuid: uuid::Uuid::new_v4().to_string().replace('-', ""),
         access_token: "0".to_string(),
-        account_type: "offline".to_string(),
+        account_type: "rpworld".to_string(),
         is_admin: owner || moderator,
         is_owner: owner,
         role: if owner { "owner".to_string() } else { credential.role.clone() },
@@ -230,7 +230,32 @@ pub async fn clear_offline_profile() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn login_offline(username: String, password: String) -> Result<Account, String> {
+pub async fn login_offline(username: String) -> Result<Account, String> {
+    let username = username.trim().to_string();
+    if username.len() < 3 || username.len() > 16 || !username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err("Ник должен быть 3-16 символов: латиница, цифры и _".to_string());
+    }
+    let credentials = load_accounts().await?;
+    if credentials.accounts.iter().any(|account| account.username.eq_ignore_ascii_case(&username)) {
+        return Err("Этот ник занят RPWorld аккаунтом. Используйте вход RPWorld аккаунт.".to_string());
+    }
+
+    let account = Account {
+        username,
+        uuid: uuid::Uuid::new_v4().to_string().replace('-', ""),
+        access_token: "0".to_string(),
+        account_type: "offline".to_string(),
+        is_admin: false,
+        is_owner: false,
+        role: String::new(),
+    };
+    let json = serde_json::to_string_pretty(&account).map_err(|e| e.to_string())?;
+    fs::write(get_account_file(), json).map_err(|e| e.to_string())?;
+    Ok(account)
+}
+
+#[tauri::command]
+pub async fn login_rpworld(username: String, password: String) -> Result<Account, String> {
     let username = username.trim().to_string();
     let credentials = load_accounts().await?;
     let expected = credentials
@@ -244,7 +269,6 @@ pub async fn login_offline(username: String, password: String) -> Result<Account
     }
 
     let account = build_account(expected);
-
     let json = serde_json::to_string_pretty(&account).map_err(|e| e.to_string())?;
     fs::write(get_account_file(), json).map_err(|e| e.to_string())?;
     Ok(account)

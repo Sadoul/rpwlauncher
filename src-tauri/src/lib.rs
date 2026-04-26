@@ -115,6 +115,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Auth
             auth::login_offline,
+            auth::login_rpworld,
             auth::login_microsoft,
             auth::get_saved_account,
             auth::get_admin_token,
