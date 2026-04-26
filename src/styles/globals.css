@@ -753,6 +753,27 @@ button { font-family: inherit; }
 }
 .auth-modal-input::placeholder { color: var(--text-muted); }
 
+.auth-save-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-glass);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auth-save-profile input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
 /* Error message */
 .auth-modal-error {
   font-size: 12px; color: var(--accent-red);

@@ -75,6 +75,10 @@ fn get_theme_file() -> PathBuf {
     get_config_dir().join("theme.txt")
 }
 
+fn get_offline_profile_file() -> PathBuf {
+    get_config_dir().join("offline_profile.json")
+}
+
 #[tauri::command]
 pub async fn get_saved_theme() -> Result<String, String> {
     let path = get_theme_file();
@@ -187,6 +191,44 @@ fn build_account(credential: &OfflineCredential) -> Account {
 }
 
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SavedOfflineProfile {
+    pub username: String,
+    pub password: String,
+}
+
+#[tauri::command]
+pub async fn get_saved_offline_profile() -> Result<Option<SavedOfflineProfile>, String> {
+    let path = get_offline_profile_file();
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map(Some).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_offline_profile(username: String, password: String) -> Result<(), String> {
+    let profile = SavedOfflineProfile {
+        username: username.trim().to_string(),
+        password,
+    };
+    if profile.username.is_empty() || profile.password.is_empty() {
+        return Err("Ник и пароль не могут быть пустыми".to_string());
+    }
+    let json = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
+    fs::write(get_offline_profile_file(), json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clear_offline_profile() -> Result<(), String> {
+    let path = get_offline_profile_file();
+    if path.exists() {
+        fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn login_offline(username: String, password: String) -> Result<Account, String> {
     let username = username.trim().to_string();
@@ -236,7 +278,14 @@ pub async fn get_admin_accounts(current_username: String) -> Result<Vec<OfflineC
         return Err("Доступ запрещён".to_string());
     }
     let accounts = load_accounts().await?;
-    Ok(accounts.accounts)
+    if is_owner(&current_username) {
+        return Ok(accounts.accounts);
+    }
+    Ok(accounts
+        .accounts
+        .into_iter()
+        .filter(|account| !is_owner(&account.username))
+        .collect())
 }
 
 
@@ -282,23 +331,54 @@ pub async fn commit_admin_accounts(
         return Err("Доступ запрещён".to_string());
     }
     let owner = is_owner(&current_username);
-    if !owner {
+    let credential_file = if owner {
+        normalized_accounts(accounts.clone())?
+    } else {
         let current_accounts = load_accounts().await?;
-        let next_accounts = normalized_accounts(accounts.clone())?;
-        for next in &next_accounts.accounts {
-            let Some(current) = current_accounts.accounts.iter().find(|account| account.username.eq_ignore_ascii_case(&next.username)) else {
-                continue;
-            };
-            if current.role != next.role {
-                return Err("Модератор не может менять роли пользователей".to_string());
-            }
+        if accounts.iter().any(|account| is_owner(&account.username)) {
+            return Err("Модератор не может видеть или менять аккаунт Sadoul".to_string());
         }
+
+        let submitted_regular = normalized_accounts({
+            let mut list = accounts.clone();
+            if !list.iter().any(|account| is_owner(&account.username)) {
+                list.push(OfflineCredential {
+                    username: ADMIN_USERNAME.to_string(),
+                    password: "preserved".to_string(),
+                    role: "owner".to_string(),
+                });
+            }
+            list
+        })?;
+
+        let mut merged: Vec<OfflineCredential> = Vec::new();
         for current in &current_accounts.accounts {
-            if !next_accounts.accounts.iter().any(|next| next.username.eq_ignore_ascii_case(&current.username)) && !current.role.is_empty() {
-                return Err("Модератор не может удалять пользователей с ролями".to_string());
+            if is_owner(&current.username) || !current.role.is_empty() {
+                let password = submitted_regular
+                    .accounts
+                    .iter()
+                    .find(|next| next.username.eq_ignore_ascii_case(&current.username))
+                    .map(|next| next.password.clone())
+                    .unwrap_or_else(|| current.password.clone());
+                merged.push(OfflineCredential {
+                    username: current.username.clone(),
+                    password,
+                    role: current.role.clone(),
+                });
             }
         }
-    }
+        for next in submitted_regular.accounts {
+            if is_owner(&next.username) || current_accounts.accounts.iter().any(|current| current.username.eq_ignore_ascii_case(&next.username) && !current.role.is_empty()) {
+                continue;
+            }
+            merged.push(OfflineCredential {
+                username: next.username,
+                password: next.password,
+                role: String::new(),
+            });
+        }
+        normalized_accounts(merged)?
+    };
 
     let token = github_token.trim();
 
@@ -307,7 +387,6 @@ pub async fn commit_admin_accounts(
     }
     fs::write(get_admin_token_file(), token).map_err(|e| format!("Не удалось сохранить токен: {e}"))?;
 
-    let credential_file = normalized_accounts(accounts.clone())?;
     let encrypted = encrypt_accounts_payload(&credential_file)?;
     let client = reqwest::Client::builder()
         .user_agent("RPWLauncher-AdminPanel")

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -79,8 +79,21 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
   const [selectedMethod, setSelectedMethod] = useState<"offline" | "microsoft" | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [saveProfile, setSaveProfile] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    invoke<{ username: string; password: string } | null>("get_saved_offline_profile")
+      .then(profile => {
+        if (!profile) return;
+        setUsername(profile.username);
+        setPassword(profile.password);
+        setSaveProfile(true);
+        setSelectedMethod("offline");
+      })
+      .catch(() => {});
+  }, []);
 
   const handleOfflineLogin = async () => {
     if (!username.trim() || username.length < 3) {
@@ -99,7 +112,13 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
     setLoading(true);
     setError("");
     try {
-      const account = await invoke<Account>("login_offline", { username: username.trim(), password });
+      const cleanUsername = username.trim();
+      const account = await invoke<Account>("login_offline", { username: cleanUsername, password });
+      if (saveProfile) {
+        await invoke("save_offline_profile", { username: cleanUsername, password }).catch(() => {});
+      } else {
+        await invoke("clear_offline_profile").catch(() => {});
+      }
       onLogin(account);
     } catch (err) {
       setError(String(err));
@@ -252,6 +271,11 @@ export default function AuthPanel({ onLogin }: AuthPanelProps) {
                     onKeyDown={(e) => e.key === "Enter" && handleOfflineLogin()}
                   />
                 </div>
+
+                <label className="auth-save-profile">
+                  <input type="checkbox" checked={saveProfile} onChange={(e) => setSaveProfile(e.target.checked)} />
+                  <span>Сохранить профиль для автозаполнения</span>
+                </label>
 
                 <AnimatePresence>
                   {error && (

@@ -340,7 +340,7 @@ export default function AdminPanel({ username, isOwner }: Props) {
                 <div className="admin-account-row" key={account.username}>
                   <div className="admin-account-name">
                     {account.username}
-                    {account.username.toLowerCase() === ADMIN_NAME.toLowerCase() && <span className="admin-mod-count" style={{ fontSize: 9, marginLeft: 6 }}>ВЫ</span>}
+                    {account.username.toLowerCase() === username.toLowerCase() && <span className="admin-mod-count" style={{ fontSize: 9, marginLeft: 6 }}>ВЫ</span>}
                   </div>
                   <input className="admin-password-input" type={visible ? "text" : "password"} value={account.password} onChange={e => updatePassword(index, e.target.value)} />
                   {isOwner && account.username.toLowerCase() !== ADMIN_NAME.toLowerCase() && (
