@@ -288,9 +288,6 @@ export default function AdminPanel({ username }: Props) {
 
       {activeTab === "builds" && (
         <div className="admin-build-panel">
-          <div className="admin-note">
-            Здесь настраиваются сборки <b>RPWorld</b> и <b>MiniGames</b>: Minecraft version, loader, список модов и загрузка .jar через drag & drop.
-          </div>
           <div className="admin-build-tabs">
             {BUILD_NAMES.map(build => (
               <button key={build} className={`admin-build-tab ${activeBuild === build ? "active" : ""}`} onClick={() => setActiveBuild(build)}>
@@ -302,23 +299,23 @@ export default function AdminPanel({ username }: Props) {
           {githubToken.trim() && !manifest && <div className="admin-message">Загружаю manifest сборки...</div>}
           {manifest && (
             <>
-              <div className="admin-build-settings">
+              <div className="admin-build-settings" style={{ marginBottom: 24 }}>
                 <label>
                   Версия Minecraft
-                  {availableVersions.length > 0 ? (
-                    <select className="admin-password-input" value={manifest.minecraft_version} onChange={e => updateManifest({ minecraft_version: e.target.value })}>
-                      {availableVersions.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  ) : (
-                    <input className="admin-password-input" value={manifest.minecraft_version} onChange={e => updateManifest({ minecraft_version: e.target.value })} />
-                  )}
+                  <select className="admin-password-input" value={manifest.minecraft_version} onChange={e => updateManifest({ minecraft_version: e.target.value })}>
+                    {availableVersions.length > 0 ? (
+                      availableVersions.map(v => <option key={v} value={v}>{v}</option>)
+                    ) : (
+                      <option value={manifest.minecraft_version}>{manifest.minecraft_version}</option>
+                    )}
+                  </select>
                 </label>
                 <label>Загрузчик<select className="admin-password-input" value={manifest.loader} onChange={e => updateManifest({ loader: e.target.value })}>{LOADERS.map(loader => <option key={loader} value={loader}>{loader}</option>)}</select></label>
                 <label>Версия загрузчика<input className="admin-password-input" value={manifest.loader_version || ""} onChange={e => updateManifest({ loader_version: e.target.value })} placeholder="можно пусто = latest" /></label>
               </div>
 
               <div className="admin-drop-zone" onDragOver={e => e.preventDefault()} onDrop={onDropMod}>
-                {uploadingMod ? "Загрузка мода на GitHub..." : "📦 Перетащите .jar моды сюда (или на любой ряд ниже), чтобы добавить в сборку"}
+                {uploadingMod ? "Загрузка мода на GitHub..." : "Перетащите .jar ��оды сюда (или на любой ряд ниже), чтобы добавить в сборку"}
               </div>
 
               <div className="admin-mod-search">
