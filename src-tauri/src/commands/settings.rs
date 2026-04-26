@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 fn data_dir() -> PathBuf {
-    dirs::data_dir()
+    dirs::config_dir() // This is Roaming AppData on Windows
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".rpworld")
 }

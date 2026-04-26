@@ -99,6 +99,15 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
   const locked = page === "minigames";
   const configLocked = isBuiltin;
 
+  const [editingMemory, setEditingMemory] = useState(false);
+  const [memoryInput, setMemoryInput] = useState(String(memory));
+
+  const handleMemoryInputBlur = () => {
+    const val = parseInt(memoryInput);
+    if (!isNaN(val)) setMemory(Math.max(1024, Math.min(32768, val)));
+    setEditingMemory(false);
+  };
+
   return (
     <div className="settings-panel modpack-settings-panel">
       <div className="settings-header">
@@ -110,39 +119,72 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
       </div>
 
       <div className="modpack-settings-grid">
-        <div className="admin-card">
-          <label>Название сборки</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} disabled={!isCustom} />
-        </div>
-        <div className="admin-card">
-          <label>Тип загрузчика</label>
-          <select value={loader} onChange={(e) => setLoader(e.target.value)} disabled={configLocked}>
-            <option value="vanilla">Vanilla</option>
-            <option value="forge">Forge</option>
-            <option value="fabric">Fabric</option>
-            <option value="neoforge">NeoForge</option>
-            <option value="optifine">OptiFine</option>
-          </select>
-        </div>
-        <div className="admin-card">
-          <label>Версия Minecraft</label>
-          <input value={mcVersion} onChange={(e) => setMcVersion(e.target.value)} disabled={configLocked} />
-        </div>
-        <div className="admin-card">
-          <label>Версия загрузчика</label>
-          <input value={loaderVersion} onChange={(e) => setLoaderVersion(e.target.value)} disabled={configLocked} />
-        </div>
-        <div className="admin-card">
-          <label>ОЗУ сборки</label>
+        {isCustom && (
+          <div className="admin-card">
+            <label>Название сборки</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Название..." />
+          </div>
+        )}
+        
+        {isCustom && (
+          <div className="admin-card">
+            <label>Тип загрузчика</label>
+            <select value={loader} onChange={(e) => setLoader(e.target.value)}>
+              <option value="vanilla">Vanilla</option>
+              <option value="forge">Forge</option>
+              <option value="fabric">Fabric</option>
+              <option value="neoforge">NeoForge</option>
+              <option value="optifine">OptiFine</option>
+            </select>
+          </div>
+        )}
+
+        {isCustom && (
+          <div className="admin-card">
+            <label>Версия Minecraft</label>
+            <input value={mcVersion} onChange={(e) => setMcVersion(e.target.value)} placeholder="1.20.1" />
+          </div>
+        )}
+
+        {isCustom && (
+          <div className="admin-card">
+            <label>Версия загрузчика</label>
+            <input value={loaderVersion} onChange={(e) => setLoaderVersion(e.target.value)} placeholder="latest" />
+          </div>
+        )}
+
+        <div className="admin-card wide">
+          <label>Выделение ОЗУ (МБ)</label>
           <div className="memory-row">
-            <input type="range" min={1024} max={16384} step={512} value={memory} onChange={(e) => setMemory(Number(e.target.value))} />
-            <span className="memory-chip">{(memory / 1024).toFixed(1)} ГБ</span>
+            <input type="range" min={1024} max={16384} step={512} value={memory} onChange={(e) => {
+              setMemory(Number(e.target.value));
+              setMemoryInput(e.target.value);
+            }} className="ram-slider" />
+            
+            {editingMemory ? (
+              <input
+                className="memory-input"
+                autoFocus
+                value={memoryInput}
+                onChange={(e) => setMemoryInput(e.target.value)}
+                onBlur={handleMemoryInputBlur}
+                onKeyDown={(e) => e.key === "Enter" && handleMemoryInputBlur()}
+              />
+            ) : (
+              <span className="memory-chip clickable" onClick={() => setEditingMemory(true)}>
+                {memory} МБ ({(memory / 1024).toFixed(1)} ГБ)
+              </span>
+            )}
           </div>
         </div>
-        <div className="admin-card wide">
-          <label>JVM аргументы</label>
-          <textarea value={jvmArgs} onChange={(e) => setJvmArgs(e.target.value)} rows={4} placeholder="Например: -XX:+UseG1GC" disabled={configLocked} />
-        </div>
+
+        {isCustom && (
+          <div className="admin-card wide">
+            <label>JVM аргументы</label>
+            <textarea value={jvmArgs} onChange={(e) => setJvmArgs(e.target.value)} rows={4} placeholder="Например: -XX:+UseG1GC" />
+          </div>
+        )}
+
         <div className="admin-card wide">
           <label>Папка сборки</label>
           <div className="folder-row">
@@ -153,8 +195,8 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
       </div>
 
       <div className="modpack-settings-actions">
-        <button className="settings-btn primary" onClick={save}>Сохранить настройки</button>
-        <button className="settings-btn danger" onClick={deletePack}>Удалить сборку с компьютера</button>
+        <button className="settings-btn primary large-btn" onClick={save}>Сохранить настройки</button>
+        <button className="settings-btn danger large-btn" onClick={deletePack}>Удалить сборку с компьютера</button>
       </div>
       {message && <div className="admin-message">{message}</div>}
     </div>

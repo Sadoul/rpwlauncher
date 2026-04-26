@@ -1286,18 +1286,19 @@ button { font-family: inherit; }
 /* RAM slider */
 .ram-slider {
   flex: 1; -webkit-appearance: none; appearance: none;
-  height: 4px; border-radius: 2px; outline: none; cursor: pointer;
-  background: linear-gradient(
-    to right,
-    var(--accent) 0%, var(--accent) var(--slider-pct, 50%),
-    var(--border) var(--slider-pct, 50%), var(--border) 100%
-  );
+  height: 6px; border-radius: 3px; outline: none; cursor: pointer;
+  background: var(--bg-glass);
 }
 .ram-slider::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
-  width: 16px; height: 16px; border-radius: 50%;
+  width: 18px; height: 18px; border-radius: 50%;
   background: var(--accent); cursor: pointer;
-  box-shadow: 0 0 8px var(--accent-glow);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+.memory-input {
+  width: 80px; padding: 8px; border-radius: 8px;
+  background: var(--bg-glass); border: 1px solid var(--border);
+  color: var(--text); font-weight: 800; text-align: center;
 }
 
 /* JVM args textarea */
