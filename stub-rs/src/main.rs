@@ -41,7 +41,7 @@ fn main() {
         Err(_) => {
             // No HTTP client → just launch whatever is installed
             if let Some(path) = find_launcher() {
-                let _ = Command::new(&path).spawn();
+launch_installed_launcher(&path);
             }
             exit(0);
         }
@@ -60,7 +60,7 @@ fn main() {
         Ok(r) => r,
         Err(e) => {
             show_error(&format!("Не удалось проверить обновление: {}", e));
-            if let Some(path) = find_launcher() { let _ = Command::new(&path).spawn(); }
+            launch_if_installed();
             exit(0);
         }
     };
@@ -70,7 +70,7 @@ fn main() {
             "Не удалось проверить обновление: GitHub вернул HTTP {}.\n\nПроверьте токен доступа к приватному репозиторию или сделайте репозиторий публичным.",
             release_response.status()
         ));
-        if let Some(path) = find_launcher() { let _ = Command::new(&path).spawn(); }
+        launch_if_installed();
         exit(0);
     }
 
@@ -78,7 +78,7 @@ fn main() {
         Ok(r) => r,
         Err(e) => {
             show_error(&format!("Не удалось разобрать ответ GitHub: {}", e));
-            if let Some(path) = find_launcher() { let _ = Command::new(&path).spawn(); }
+            launch_if_installed();
             exit(0);
         }
     };
@@ -92,9 +92,10 @@ fn main() {
     //   show the nice UpdateOverlay. No hidden/silent update here.
     // - If launcher is missing, the stub still bootstraps it silently.
     if let Some(path) = launcher_path {
-        let _ = Command::new(&path).spawn();
+        launch_installed_launcher(&path);
         exit(0);
     }
+
 
     let needs_update = installed_version.is_none();
     if !needs_update {
@@ -116,7 +117,7 @@ fn main() {
         None => {
             // No installer asset found → just launch if installed
             if let Some(path) = launcher_path {
-                let _ = Command::new(&path).spawn();
+launch_installed_launcher(&path);
             }
             exit(0);
         }
@@ -161,14 +162,14 @@ fn main() {
         Ok(r) => r,
         Err(e) => {
             show_error(&format!("Ошибка скачивания обновления: {}", e));
-            if let Some(path) = launcher_path { let _ = Command::new(&path).spawn(); }
+            launch_if_installed();
             exit(0);
         }
     };
 
     if !download_response.status().is_success() {
         show_error(&format!("Ошибка скачивания обновления: HTTP {}", download_response.status()));
-        if let Some(path) = launcher_path { let _ = Command::new(&path).spawn(); }
+        launch_if_installed();
         exit(0);
     }
 
@@ -176,7 +177,7 @@ fn main() {
         Ok(b) => b,
         Err(e) => {
             show_error(&format!("Ошибка чтения обновления: {}", e));
-            if let Some(path) = launcher_path { let _ = Command::new(&path).spawn(); }
+            launch_if_installed();
             exit(0);
         }
     };
@@ -184,7 +185,7 @@ fn main() {
     if std::fs::write(&installer_path, &bytes).is_err() {
         show_error("Ошибка сохранения файла обновления.");
         if let Some(path) = launcher_path {
-            let _ = Command::new(&path).spawn();
+launch_installed_launcher(&path);
         }
         exit(0);
     }
@@ -202,14 +203,43 @@ fn main() {
     std::thread::sleep(std::time::Duration::from_millis(wait_ms));
 
     if let Some(path) = find_launcher() {
-        let _ = Command::new(&path).spawn();
+launch_installed_launcher(&path);
     }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+fn launch_if_installed() {
+    if let Some(path) = find_launcher() {
+        launch_installed_launcher(&path);
+    }
+}
+
+fn launch_installed_launcher(path: &PathBuf) {
+    close_running_launcher();
+    std::thread::sleep(std::time::Duration::from_millis(900));
+    let _ = Command::new(path).spawn();
+}
+
+fn close_running_launcher() {
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let _ = Command::new("taskkill")
+            .args(["/IM", EXE_NAME, "/F", "/T"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .stdin(std::process::Stdio::null())
+            .status();
+    }
+}
+
 /// Read installed version from NSIS registry (DisplayVersion field).
 fn get_installed_version() -> Option<String> {
+
     #[cfg(windows)]
     {
         use winreg::enums::*;
