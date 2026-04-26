@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
 
 interface AccountRow {
   username: string;
@@ -55,9 +57,11 @@ export default function AdminPanel({ username, isOwner }: Props) {
   const [modSearch, setModSearch] = useState("");
   const [availableVersions, setAvailableVersions] = useState<string[]>([]);
   const [downloadDir, setDownloadDir] = useState("");
+  const lastDropKeyRef = useRef("");
 
 
   useEffect(() => {
+
     load();
     loadToken();
     loadVersions();
@@ -87,6 +91,17 @@ export default function AdminPanel({ username, isOwner }: Props) {
   useEffect(() => {
     if (isOwner && githubToken.trim()) loadManifest(activeBuild);
   }, [activeBuild, githubToken, isOwner]);
+
+  useEffect(() => {
+    if (!isOwner || activeTab !== "builds" || !manifest) return;
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow().onDragDropEvent(async (event) => {
+      if (event.payload.type !== "drop") return;
+      await handleDroppedPaths(event.payload.paths);
+    }).then(fn => { unlisten = fn; }).catch(error => notify(`Drag & drop недоступен: ${String(error)}`));
+    return () => { if (unlisten) unlisten(); };
+  }, [isOwner, activeTab, manifest, activeBuild, githubToken]);
+
 
   const notify = (text: string) => {
     setMessage(text);
@@ -240,9 +255,14 @@ export default function AdminPanel({ username, isOwner }: Props) {
 
   const uploadModPath = async (path: string) => {
     if (!manifest || !path) return;
+    if (!githubToken.trim()) {
+      notify("Введите GitHub token перед загрузкой мода");
+      return;
+    }
     setUploadingMod(true);
-    setMessage(`Загружаю мод ${path}...`);
+    notify(`Загружаю мод ${path}...`);
     try {
+
       const entry = await invoke<BuildFileEntry>("upload_build_mod", {
         build: activeBuild,
         githubToken,
@@ -256,18 +276,53 @@ export default function AdminPanel({ username, isOwner }: Props) {
       notify(`Мод ${entry.name} загружен. Нажмите «Сохранить manifest», чтобы он вошёл в сборку.`);
 
     } catch (e) {
-      setMessage(String(e));
+      notify(`Не удалось загрузить мод: ${String(e)}`);
     } finally {
       setUploadingMod(false);
+    }
+  };
+
+  const handleDroppedPaths = async (paths: string[]) => {
+    const key = paths.join("|");
+    if (key && key === lastDropKeyRef.current) return;
+    lastDropKeyRef.current = key;
+    window.setTimeout(() => {
+      if (lastDropKeyRef.current === key) lastDropKeyRef.current = "";
+    }, 1200);
+
+    const jarPaths = paths.filter(path => path.toLowerCase().endsWith(".jar"));
+    if (jarPaths.length === 0) {
+      notify("Перетащите .jar файл мода или нажмите кнопку выбора файла");
+      return;
+    }
+    for (const path of jarPaths) {
+      await uploadModPath(path);
     }
   };
 
   const onDropMod = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const files = Array.from(event.dataTransfer.files);
-    for (const file of files) {
-      const path = (file as any).path || (file as any).webkitRelativePath;
-      if (path) await uploadModPath(path);
+    const paths = files.map(file => (file as any).path || (file as any).webkitRelativePath).filter(Boolean);
+    if (paths.length === 0) {
+      notify("WebView не отдал путь файла. Нажмите «Выбрать .jar» или перетащите файл в окно лаунчера.");
+      return;
+    }
+    await handleDroppedPaths(paths);
+  };
+
+
+  const chooseModFiles = async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({ multiple: true, directory: false, filters: [{ name: "Minecraft mods", extensions: ["jar"] }] });
+      const paths = Array.isArray(selected) ? selected : (typeof selected === "string" ? [selected] : []);
+      if (paths.length === 0) return;
+      for (const path of paths) {
+        await uploadModPath(path);
+      }
+    } catch (e) {
+      notify(String(e));
     }
   };
 
@@ -406,8 +461,12 @@ export default function AdminPanel({ username, isOwner }: Props) {
               </div>
 
               <div className="admin-drop-zone" onDragOver={e => e.preventDefault()} onDrop={onDropMod}>
-                {uploadingMod ? "Загрузка мода на GitHub..." : "Перетащите .jar моды сюда или на список ниже, чтобы добавить в сборку"}
+                <div>{uploadingMod ? "Загрузка мода на GitHub..." : "Перетащите .jar моды сюда или на список ниже, чтобы добавить в сборку"}</div>
+                <button className="settings-btn compact" type="button" onClick={chooseModFiles} disabled={uploadingMod}>
+                  Выбрать .jar
+                </button>
               </div>
+
 
 
               <div className="admin-mod-search">

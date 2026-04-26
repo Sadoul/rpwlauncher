@@ -1669,7 +1669,8 @@ button { font-family: inherit; }
    TOAST NOTIFICATION
    ══════════════════════════════════════════════════════════════ */
 .notification {
-  position: fixed; bottom: 24px; right: 24px;
+  position: fixed; top: 24px; right: 24px;
+
   max-width: min(520px, calc(100vw - 48px));
   padding: 14px 18px;
   background: linear-gradient(135deg, #050814 0%, #0d1630 100%);
