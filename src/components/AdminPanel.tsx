@@ -46,11 +46,20 @@ export default function AdminPanel({ username }: Props) {
   const [manifest, setManifest] = useState<BuildManifest | null>(null);
   const [uploadingMod, setUploadingMod] = useState(false);
   const [modSearch, setModSearch] = useState("");
+  const [availableVersions, setAvailableVersions] = useState<string[]>([]);
 
   useEffect(() => {
     load();
     loadToken();
+    loadVersions();
   }, []);
+
+  const loadVersions = async () => {
+    try {
+      const resp = await invoke<any[]>("get_versions");
+      setAvailableVersions(resp.map(v => v.id));
+    } catch { /* fallback to manual input if failed */ }
+  };
 
   useEffect(() => {
     if (githubToken.trim()) loadManifest(activeBuild);
@@ -294,7 +303,16 @@ export default function AdminPanel({ username }: Props) {
           {manifest && (
             <>
               <div className="admin-build-settings">
-                <label>Версия Minecraft<input className="admin-password-input" value={manifest.minecraft_version} onChange={e => updateManifest({ minecraft_version: e.target.value })} /></label>
+                <label>
+                  Версия Minecraft
+                  {availableVersions.length > 0 ? (
+                    <select className="admin-password-input" value={manifest.minecraft_version} onChange={e => updateManifest({ minecraft_version: e.target.value })}>
+                      {availableVersions.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  ) : (
+                    <input className="admin-password-input" value={manifest.minecraft_version} onChange={e => updateManifest({ minecraft_version: e.target.value })} />
+                  )}
+                </label>
                 <label>Загрузчик<select className="admin-password-input" value={manifest.loader} onChange={e => updateManifest({ loader: e.target.value })}>{LOADERS.map(loader => <option key={loader} value={loader}>{loader}</option>)}</select></label>
                 <label>Версия загрузчика<input className="admin-password-input" value={manifest.loader_version || ""} onChange={e => updateManifest({ loader_version: e.target.value })} placeholder="можно пусто = latest" /></label>
               </div>
