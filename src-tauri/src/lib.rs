@@ -165,6 +165,10 @@ pub fn run() {
             settings::save_avatar,
             settings::get_avatar,
             settings::open_data_folder,
+            settings::open_path,
+            settings::get_builtin_modpack_dir,
+            settings::open_builtin_modpack_folder,
+            settings::delete_builtin_modpack,
             settings::delete_launcher,
             // Logger
             logger::set_logging_enabled,

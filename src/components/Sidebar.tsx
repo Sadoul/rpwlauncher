@@ -16,6 +16,7 @@ interface SidebarProps {
   avatarUrl: string | null;
   customModpacks: CustomModpack[];
   onConfigurePage: (page: Page) => void;
+  onDeleteBuiltinModpack: (page: Page) => void;
   onDeleteCustomModpack: (name: string) => void;
 }
 
@@ -77,7 +78,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const DISCORD_URL = "https://discord.gg/DnVNeBYzMM";
 
-export default function Sidebar({ currentPage, onPageChange, account, onLogout, avatarUrl, customModpacks, onConfigurePage, onDeleteCustomModpack }: SidebarProps) {
+export default function Sidebar({ currentPage, onPageChange, account, onLogout, avatarUrl, customModpacks, onConfigurePage, onDeleteBuiltinModpack, onDeleteCustomModpack }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [navOrder, setNavOrder] = useState<string[]>(() => {
     try {
@@ -323,10 +324,22 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
                 onConfigurePage(contextMenu.item.id);
                 setContextMenu(null);
               }}
-              disabled={contextMenu.item.id === "rpworld" || contextMenu.item.id === "minigames"}
+              disabled={contextMenu.item.id === "minigames"}
             >
-              Настроить {(contextMenu.item.id === "rpworld" || contextMenu.item.id === "minigames") && <span className="context-lock"><IconLock /></span>}
+              Настроить {contextMenu.item.id === "minigames" && <span className="context-lock"><IconLock /></span>}
             </button>
+            {(contextMenu.item.id === "rpworld" || contextMenu.item.id === "minigames") && (
+              <button
+                className="sidebar-context-item danger"
+                disabled={contextMenu.item.id === "minigames"}
+                onClick={() => {
+                  onDeleteBuiltinModpack(contextMenu.item.id);
+                  setContextMenu(null);
+                }}
+              >
+                Удалить сборку {contextMenu.item.id === "minigames" && <span className="context-lock"><IconLock /></span>}
+              </button>
+            )}
             {contextMenu.item.customName && (
               <button
                 className="sidebar-context-item danger"

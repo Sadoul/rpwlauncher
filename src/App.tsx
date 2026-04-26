@@ -10,6 +10,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import CustomModpackPanel from "./components/CustomModpackPanel";
 import UpdateOverlay from "./components/UpdateOverlay";
 import AdminPanel from "./components/AdminPanel";
+import ModpackSettingsPanel from "./components/ModpackSettingsPanel";
 
 interface Account {
   username: string;
@@ -25,6 +26,13 @@ interface JavaInfo {
   path: string;
   version: string;
   found: boolean;
+}
+
+interface LaunchProgress {
+  stage: string;
+  progress: number;
+  total: number;
+  message: string;
 }
 
 interface UpdateInfo {
@@ -53,6 +61,7 @@ export interface CustomModpack {
 export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>("rpworld");
+  const [configurePage, setConfigurePage] = useState<Page | null>(null);
   const [loading, setLoading] = useState(true);
   const [javaPath, setJavaPath] = useState("");
   const [javaVersion, setJavaVersion] = useState("");
@@ -70,6 +79,7 @@ export default function App() {
   const [allowMultipleInstances, setAllowMultipleInstances] = useState(false);
   const [closeLauncherOnGameStart, setCloseLauncherOnGameStart] = useState(true);
   const [reopenLauncherAfterGameClose, setReopenLauncherAfterGameClose] = useState(true);
+  const [globalLaunchProgress, setGlobalLaunchProgress] = useState<LaunchProgress | null>(null);
 
   // useLayoutEffect runs synchronously before paint — ensures all CSS variables
   // change in the same frame, so background + widgets transition simultaneously
@@ -92,6 +102,17 @@ export default function App() {
   }, []);
 
   useEffect(() => { initializeApp(); }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(async () => {
+      try {
+        const progress = await invoke<LaunchProgress | null>("get_launch_progress");
+        if (progress && progress.stage !== "done") setGlobalLaunchProgress(progress);
+        else if (progress?.stage === "done") setGlobalLaunchProgress(null);
+      } catch { /* ignore */ }
+    }, 700);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const initializeApp = async () => {
     try {
@@ -158,6 +179,18 @@ export default function App() {
       await loadCustomModpacks();
       setCurrentPage("rpworld");
       showNotification(`Модпак «${name}» удалён`);
+    } catch (e) {
+      showNotification(String(e));
+    }
+  };
+
+  const deleteBuiltinModpack = async (page: Page) => {
+    if (page !== "rpworld" && page !== "minigames") return;
+    const title = page === "rpworld" ? "RPWorld" : "Мини-игры";
+    if (!confirm(`Удалить установленную сборку «${title}» с компьютера? Лаунчер останется.`)) return;
+    try {
+      await invoke("delete_builtin_modpack", { modpackName: page });
+      showNotification(`Сборка «${title}» удалена`);
     } catch (e) {
       showNotification(String(e));
     }
@@ -259,16 +292,16 @@ export default function App() {
       <div className="main-layout" style={{ position: "relative", zIndex: 1 }}>
         <Sidebar
           currentPage={currentPage}
-          onPageChange={setCurrentPage}
+          onPageChange={(page) => { setConfigurePage(null); setCurrentPage(page); }}
           account={account}
           onLogout={handleLogout}
           avatarUrl={avatarUrl}
           customModpacks={customModpacks}
           onConfigurePage={(page) => {
-            if (page === "rpworld") showNotification("Настройка RPWorld пока недоступна");
-            else if (page === "minigames") showNotification("Мини-игры пока в разработке");
-            else if (page === "custom") setCurrentPage("custom");
+            if (page === "custom") setCurrentPage("custom");
+            else setConfigurePage(page);
           }}
+          onDeleteBuiltinModpack={deleteBuiltinModpack}
           onDeleteCustomModpack={deleteCustomModpack}
         />
 
@@ -281,7 +314,23 @@ export default function App() {
           </AnimatePresence>
 
           <AnimatePresence mode="wait">
-            {currentPage === "settings" && account ? (
+            {configurePage && account ? (
+              <motion.div
+                key={`configure-${configurePage}`}
+                className="game-panel"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <ModpackSettingsPanel
+                  page={configurePage}
+                  customModpacks={customModpacks}
+                  onBack={() => setConfigurePage(null)}
+                  onChanged={loadCustomModpacks}
+                />
+              </motion.div>
+            ) : currentPage === "settings" && account ? (
               <motion.div
                 key="settings"
                 className="game-panel"
@@ -357,6 +406,23 @@ export default function App() {
           </AnimatePresence>
         </div>
       </div>
+
+      <AnimatePresence>
+        {globalLaunchProgress && currentPage !== "rpworld" && currentPage !== "minigames" && !currentPage.startsWith("custom:") && (
+          <motion.div
+            className="global-launch-progress"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+          >
+            <strong>Установка / запуск сборки</strong>
+            <span>{globalLaunchProgress.message}</span>
+            {globalLaunchProgress.total > 0 && (
+              <div className="global-progress-bar"><i style={{ width: `${Math.round((globalLaunchProgress.progress / globalLaunchProgress.total) * 100)}%` }} /></div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {notification && (
