@@ -77,7 +77,7 @@ if ($LASTEXITCODE -ne 0) { throw "Ошибка git push" }
 $releaseFiles = @($nsisFiles[0].FullName, (Resolve-Path $stubExe).Path)
 gh release create $TAG `
     --title "RPWorld Launcher $TAG" `
-    --generate-notes `
+    --notes "Обновление лаунчера до версии $TAG" `
     @releaseFiles
 
 if ($LASTEXITCODE -ne 0) { throw "Ошибка создания релиза" }

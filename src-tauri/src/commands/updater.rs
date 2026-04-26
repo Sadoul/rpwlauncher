@@ -201,7 +201,12 @@ pub async fn check_launcher_update() -> Result<UpdateInfo, String> {
         }
     }
 
-    let release_notes = release["body"].as_str().unwrap_or("").to_string();
+    let raw_notes = release["body"].as_str().unwrap_or("").trim();
+    let release_notes = if raw_notes.is_empty() || raw_notes.contains("Full Changelog") || raw_notes.contains("github.com/Sadoul/rpwlauncher/compare/") {
+        format!("Обновление лаунчера до версии v{}", latest_clean)
+    } else {
+        raw_notes.to_string()
+    };
     let version_cmp = compare_versions(&latest_clean, CURRENT_VERSION);
     let update_available = !installer_url.is_empty()
         && version_cmp == std::cmp::Ordering::Greater;
