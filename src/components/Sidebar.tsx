@@ -145,15 +145,34 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
   } | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
 
-  const reorder = (sourceId: string, targetId: string) => {
-    if (!sourceId || sourceId === targetId) return;
+  const reorderToIndex = (sourceId: string, insertionIndex: number) => {
+    if (!sourceId) return;
     const sourceIndex = navItems.findIndex((item) => item.id === sourceId);
-    const targetIndex = navItems.findIndex((item) => item.id === targetId);
-    if (sourceIndex === -1 || targetIndex === -1) return;
+    if (sourceIndex === -1) return;
+
     const next = navItems.slice();
     const [moved] = next.splice(sourceIndex, 1);
-    next.splice(targetIndex, 0, moved);
+    const safeIndex = Math.max(0, Math.min(insertionIndex, next.length));
+    next.splice(safeIndex, 0, moved);
+
+    const currentOrder = navItems.map((item) => item.id).join("|");
+    const nextOrder = next.map((item) => item.id).join("|");
+    if (currentOrder === nextOrder) return;
     persistOrder(next);
+  };
+
+  const getInsertionIndexByY = (draggedId: string, y: number): number | null => {
+    if (!navRef.current) return null;
+    const items = Array.from(navRef.current.children) as HTMLElement[];
+    const visibleItems = items.filter((el) => el.dataset.navId && el.dataset.navId !== draggedId);
+    if (visibleItems.length === 0) return null;
+
+    for (let index = 0; index < visibleItems.length; index += 1) {
+      const rect = visibleItems[index].getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+      if (y < midpoint) return index;
+    }
+    return visibleItems.length;
   };
 
   const findNavItemIdAt = (x: number, y: number): string | null => {
@@ -192,8 +211,9 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
     }
     const hoverId = findNavItemIdAt(event.clientX, event.clientY);
     setOverId(hoverId);
-    if (hoverId && hoverId !== state.id) {
-      reorder(state.id, hoverId);
+    const insertionIndex = getInsertionIndexByY(state.id, event.clientY);
+    if (insertionIndex !== null) {
+      reorderToIndex(state.id, insertionIndex);
     }
   };
 
