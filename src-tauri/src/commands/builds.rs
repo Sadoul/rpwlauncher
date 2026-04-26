@@ -34,6 +34,8 @@ struct GitHubContentResponse {
     sha: String,
     #[serde(default)]
     content: String,
+    #[serde(default)]
+    download_url: Option<String>,
 }
 
 fn default_enabled() -> bool { true }
@@ -153,9 +155,31 @@ pub async fn get_build_manifest(build: String, github_token: String) -> Result<B
     let Some(file) = get_github_file(&client, token, &manifest_api(repo)).await? else {
         return Ok(default_manifest(&build));
     };
-    let content = file.content.replace(['\r', '\n', ' '], "");
-    let bytes = general_purpose::STANDARD.decode(content).map_err(|e| e.to_string())?;
-    serde_json::from_slice::<BuildManifest>(&bytes).map_err(|e| format!("Manifest parse failed: {e}"))
+
+    let mut bytes: Vec<u8> = if !file.content.trim().is_empty() {
+        let content = file.content.replace(['\r', '\n', ' '], "");
+        general_purpose::STANDARD.decode(content).map_err(|e| e.to_string())?
+    } else if let Some(url) = file.download_url.clone() {
+        let resp = client
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| format!("Manifest download failed: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("Manifest download HTTP {}", resp.status()));
+        }
+        resp.bytes().await.map_err(|e| e.to_string())?.to_vec()
+    } else {
+        return Err("Manifest без content и download_url".to_string());
+    };
+
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        bytes.drain(0..3);
+    }
+
+    serde_json::from_slice::<BuildManifest>(&bytes)
+        .map_err(|e| format!("Manifest parse failed: {e}"))
 }
 
 #[tauri::command]
