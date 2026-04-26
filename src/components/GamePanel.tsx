@@ -81,6 +81,7 @@ export default function GamePanel({
   const [cancelling, setCancelling] = useState(false);
   const [progress, setProgress] = useState<LaunchProgress | null>(null);
   const [status, setStatus] = useState<"ready" | "downloading" | "update">("ready");
+  const [downloadProgress, setDownloadProgress] = useState<{ downloaded: number; total: number; message: string } | null>(null);
   const [error, setError] = useState("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const progressInterval = useRef<number | null>(null);
@@ -103,16 +104,64 @@ export default function GamePanel({
     return config.bg[Math.floor(Math.random() * config.bg.length)];
   }, [page]);
 
+  // Recover state from backend on mount/page-change so that launch/download
+  // progress and the disabled Play button survive switching tabs.
   useEffect(() => {
-    if (!config.locked) checkModpackUpdate();
-    const gameCheck = window.setInterval(async () => {
+    let cancelled = false;
+    const wasDownloading = { current: status === "downloading" };
+
+    const poll = async () => {
+      // Launch progress (game starting / installing version)
       try {
-        setGameRunning(await invoke<boolean>("is_game_running"));
+        const lp = await invoke<LaunchProgress | null>("get_launch_progress");
+        if (!cancelled) {
+          if (lp && lp.stage !== "done") {
+            setLaunching(true);
+            setProgress(lp);
+          } else if (lp && lp.stage === "done") {
+            setProgress(lp);
+            window.setTimeout(() => {
+              if (!cancelled) { setLaunching(false); setProgress(null); }
+            }, 1500);
+          }
+        }
       } catch { /* ignore */ }
-    }, 1000);
+
+      // Modpack download progress (installing rpworld/minigames assets)
+      try {
+        const dp = await invoke<{ downloaded: number; total: number; message: string } | null>("get_download_progress");
+        if (!cancelled) {
+          if (dp) {
+            const finished = dp.message.includes("установлена");
+            const active = !finished && (dp.total === 0 || dp.downloaded < dp.total);
+            if (active) {
+              setStatus("downloading");
+              setDownloadProgress(dp);
+              wasDownloading.current = true;
+            } else if (finished && wasDownloading.current) {
+              wasDownloading.current = false;
+              setDownloadProgress(null);
+              setStatus("ready");
+              if (!config.locked) checkModpackUpdate();
+            }
+          }
+        }
+      } catch { /* ignore */ }
+
+      // Game running flag (controls Play button enable state)
+      try {
+        if (!cancelled) setGameRunning(await invoke<boolean>("is_game_running"));
+      } catch { /* ignore */ }
+    };
+
+    if (!config.locked) checkModpackUpdate();
+    poll();
+    const timer = window.setInterval(poll, 700);
+
     return () => {
+      cancelled = true;
+      window.clearInterval(timer);
       if (progressInterval.current) clearInterval(progressInterval.current);
-      clearInterval(gameCheck);
     };
   }, [page]);
 
@@ -289,10 +338,10 @@ export default function GamePanel({
 
       <div style={{ flex: 1 }} />
 
-      {(launching || error || (!javaPath && !config.locked)) && (
+      {(launching || status === "downloading" || error || (!javaPath && !config.locked)) && (
         <div className="game-play-area">
           <AnimatePresence mode="wait">
-            {launching ? (
+            {launching || status === "downloading" ? (
               <motion.div
                 key="launching"
                 className="progress-container"
@@ -302,18 +351,18 @@ export default function GamePanel({
                 transition={{ duration: 0.25 }}
                 style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, width: "100%" }}
               >
-                {progress && (
+                {(progress || downloadProgress) && (
                   <>
                     <div className="progress-bar-wrapper" style={{ width: "100%" }}>
                       <motion.div
                         className="progress-bar-fill"
                         initial={{ width: "0%" }}
-                        animate={{ width: `${progressPercent}%` }}
+                        animate={{ width: `${progress ? progressPercent : (downloadProgress && downloadProgress.total > 0 ? Math.round((downloadProgress.downloaded / downloadProgress.total) * 100) : 0)}%` }}
                         transition={{ duration: 0.3 }}
                       />
                     </div>
                     <div className="progress-text">
-                      {progress.message}
+                      {progress ? progress.message : downloadProgress?.message}
                     </div>
                   </>
                 )}
@@ -379,7 +428,7 @@ export default function GamePanel({
             <motion.button
               className="play-button-hero footer-play-button"
               onClick={handlePlay}
-              disabled={launching || !javaPath || checkingUpdate || config.locked || (!allowMultipleInstances && gameRunning)}
+              disabled={launching || status === "downloading" || !javaPath || checkingUpdate || config.locked || (!allowMultipleInstances && gameRunning)}
               whileHover={{ scale: 1.03, y: -2 }}
               whileTap={{ scale: 0.97 }}
             >

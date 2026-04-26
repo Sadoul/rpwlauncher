@@ -58,6 +58,11 @@ export interface CustomModpack {
   game_dir: string;
 }
 
+// Module-level flag prevents double-initialization in React StrictMode
+// or when the App component remounts. Without it, check_launcher_update
+// fires two identical HTTP requests to GitHub at startup.
+let appInitialized = false;
+
 export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>("rpworld");
@@ -101,7 +106,11 @@ export default function App() {
     return () => window.removeEventListener("contextmenu", preventDefaultContextMenu, true);
   }, []);
 
-  useEffect(() => { initializeApp(); }, []);
+  useEffect(() => {
+    if (appInitialized) return;
+    appInitialized = true;
+    initializeApp();
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(async () => {
