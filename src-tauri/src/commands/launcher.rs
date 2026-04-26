@@ -7,6 +7,7 @@ use std::time::Duration;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 
 use super::logger::log;
 
@@ -128,6 +129,30 @@ struct AssetObject {
     size: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BuildManifest {
+    pub name: String,
+    pub minecraft_version: String,
+    pub loader: String,
+    #[serde(default)]
+    pub loader_version: String,
+    #[serde(default)]
+    pub mods: Vec<BuildFileEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BuildFileEntry {
+    pub name: String,
+    pub path: String,
+    pub url: String,
+    pub sha1: String,
+    pub size: u64,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool { true }
+
 fn get_minecraft_dir() -> PathBuf {
     let dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -147,6 +172,13 @@ fn set_progress(stage: &str, progress: f64, total: f64, message: &str) {
             message: message.to_string(),
         });
     }
+}
+
+fn file_sha1(path: &PathBuf) -> Result<String, String> {
+    let bytes = fs::read(path).map_err(|e| format!("sha1 read failed for {}: {}", path.display(), e))?;
+    let mut hasher = Sha1::new();
+    hasher.update(bytes);
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 async fn download_file(client: &reqwest::Client, url: &str, path: &PathBuf) -> Result<(), String> {
@@ -179,6 +211,64 @@ async fn download_file(client: &reqwest::Client, url: &str, path: &PathBuf) -> R
     fs::write(path, &bytes).map_err(|e| format!("[download] Write failed for {}: {}", path.display(), e))?;
 
     Ok(())
+}
+
+fn build_repo_for_modpack(name: &str) -> Option<&'static str> {
+    match name.to_lowercase().as_str() {
+        "rpworld" => Some("Sadoul/rpworld"),
+        "minigames" => Some("Sadoul/minigames"),
+        _ => None,
+    }
+}
+
+async fn fetch_build_manifest(client: &reqwest::Client, repo: &str) -> Result<BuildManifest, String> {
+    let url = format!("https://raw.githubusercontent.com/{}/main/manifest.json?t={}", repo, chrono::Utc::now().timestamp_millis());
+    log(&format!("[build] Fetch manifest: {}", url));
+    let response = client.get(&url).send().await.map_err(|e| format!("[build] Manifest request failed: {}", e))?;
+    if !response.status().is_success() {
+        return Err(format!("[build] Manifest HTTP {} for {}", response.status(), repo));
+    }
+    response.json::<BuildManifest>().await.map_err(|e| format!("[build] Manifest parse failed: {}", e))
+}
+
+async fn sync_build_files(client: &reqwest::Client, modpack_name: &str, mc_dir: &PathBuf) -> Result<Option<BuildManifest>, String> {
+    let Some(repo) = build_repo_for_modpack(modpack_name) else { return Ok(None); };
+    let manifest = fetch_build_manifest(client, repo).await?;
+    let mods_dir = mc_dir.join("mods");
+    fs::create_dir_all(&mods_dir).map_err(|e| format!("[build] Cannot create mods dir: {}", e))?;
+
+    set_progress("build", 0.0, manifest.mods.len() as f64, "Синхронизация модов сборки...");
+    let enabled: std::collections::HashMap<String, &BuildFileEntry> = manifest.mods.iter()
+        .filter(|m| m.enabled)
+        .map(|m| (m.name.clone(), m))
+        .collect();
+
+    for entry in manifest.mods.iter().filter(|m| m.enabled) {
+        check_launch_cancelled()?;
+        let path = mc_dir.join(&entry.path);
+        let needs_download = if path.exists() {
+            file_sha1(&path).map(|sha| sha != entry.sha1).unwrap_or(true)
+        } else {
+            true
+        };
+        if needs_download {
+            set_progress("build", 0.0, manifest.mods.len() as f64, &format!("Скачивание мода {}", entry.name));
+            download_file(client, &entry.url, &path).await?;
+        }
+    }
+
+    for file in fs::read_dir(&mods_dir).map_err(|e| format!("[build] Cannot read mods dir: {}", e))? {
+        let file = file.map_err(|e| e.to_string())?;
+        if file.file_type().map_err(|e| e.to_string())?.is_file() {
+            let name = file.file_name().to_string_lossy().to_string();
+            if name.ends_with(".jar") && !enabled.contains_key(&name) {
+                log(&format!("[build] Removing stale mod: {}", name));
+                let _ = fs::remove_file(file.path());
+            }
+        }
+    }
+    set_progress("build", manifest.mods.len() as f64, manifest.mods.len() as f64, "Моды сборки синхронизированы");
+    Ok(Some(manifest))
 }
 
 fn is_library_allowed(lib: &Library) -> bool {
@@ -733,8 +823,21 @@ pub async fn launch_game(
     fs::create_dir_all(&mc_dir)
         .map_err(|e| format!("[launch] Cannot create game dir: {}", e))?;
 
+    let mut launch_version = version.clone();
+    if let Some(modpack_name) = mc_dir.file_name().and_then(|n| n.to_str()) {
+        if let Some(manifest) = sync_build_files(&client, modpack_name, &mc_dir).await? {
+            let loader = manifest.loader.to_lowercase();
+            launch_version = if loader == "vanilla" {
+                manifest.minecraft_version.clone()
+            } else {
+                format!("{}-{}", loader, manifest.minecraft_version)
+            };
+            log(&format!("[build] Launch version overridden by manifest: {}", launch_version));
+        }
+    }
+
     // ── Detect loader type ──────────────────────────────────────────────────
-    let actual_version = if let Some((mc_ver, loader)) = parse_modded_version(&version) {
+    let actual_version = if let Some((mc_ver, loader)) = parse_modded_version(&launch_version) {
         log(&format!("[launch] Detected loader: {} for MC {}", loader, mc_ver));
 
         match loader.as_str() {

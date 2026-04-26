@@ -977,6 +977,53 @@ button { font-family: inherit; }
 .settings-btn.compact { padding: 8px 10px; min-width: 76px; font-size: 11px; }
 .settings-btn.danger { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
 .admin-message { white-space: pre-wrap; }
+.admin-tabs,
+.admin-build-actions {
+  display: flex;
+  gap: 10px;
+  margin: 10px 0 14px;
+  flex-wrap: wrap;
+}
+.admin-build-settings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.admin-build-settings label {
+  color: rgba(255, 255, 255, .78);
+  font-size: 12px;
+  font-weight: 800;
+  display: grid;
+  gap: 6px;
+}
+.admin-drop-zone {
+  border: 1px dashed rgba(255,255,255,.35);
+  border-radius: 16px;
+  padding: 22px;
+  text-align: center;
+  color: #fff;
+  background: rgba(255,255,255,.08);
+  margin-bottom: 14px;
+  font-weight: 800;
+}
+.admin-mod-list { display: grid; gap: 8px; }
+.admin-mod-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 70px auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+}
+.admin-mod-meta,
+.admin-mod-enabled {
+  color: rgba(255,255,255,.78);
+  font-size: 12px;
+  font-weight: 800;
+}
 
 /* Settings buttons */
 .settings-btn {

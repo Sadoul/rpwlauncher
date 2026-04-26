@@ -46,7 +46,7 @@ const MODPACK_CONFIGS: Record<string, ModpackConfig> = {
   rpworld: {
     title: "RPWorld",
     description: "Погрузитесь в мир ролевых приключений на Forge 1.20.1 с уникальными модами, квестами и захватывающим геймплеем.",
-    githubRepo: "Sadoul/rpwlauncher",
+    githubRepo: "Sadoul/rpworld",
     modpackName: "rpworld",
     defaultVersion: "forge-1.20.1",
     mcVersion: "1.20.1",
@@ -55,7 +55,7 @@ const MODPACK_CONFIGS: Record<string, ModpackConfig> = {
   minigames: {
     title: "Мини-игры",
     description: "BedWars, SkyWars и другие мини-игры. В разработке — скоро!",
-    githubRepo: "Sadoul/rpwlauncher",
+    githubRepo: "Sadoul/minigames",
     modpackName: "minigames",
     defaultVersion: "1.20.1",
     mcVersion: "1.20.1",

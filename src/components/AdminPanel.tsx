@@ -6,13 +6,35 @@ interface AccountRow {
   password: string;
 }
 
+interface BuildFileEntry {
+  name: string;
+  path: string;
+  url: string;
+  sha1: string;
+  size: number;
+  enabled: boolean;
+}
+
+interface BuildManifest {
+  name: string;
+  minecraft_version: string;
+  loader: string;
+  loader_version: string;
+  mods: BuildFileEntry[];
+}
+
 interface Props {
   username: string;
 }
 
 const ADMIN_NAME = "Sadoul";
+const BUILD_NAMES = ["rpworld", "minigames"];
+const LOADERS = ["vanilla", "forge", "fabric", "neoforge", "optifine"];
+
+const formatSize = (size: number) => `${(size / 1024 / 1024).toFixed(1)} МБ`;
 
 export default function AdminPanel({ username }: Props) {
+  const [activeTab, setActiveTab] = useState<"accounts" | "builds">("accounts");
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [githubToken, setGithubToken] = useState("");
   const [message, setMessage] = useState("");
@@ -20,11 +42,18 @@ export default function AdminPanel({ username }: Props) {
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [activeBuild, setActiveBuild] = useState("rpworld");
+  const [manifest, setManifest] = useState<BuildManifest | null>(null);
+  const [uploadingMod, setUploadingMod] = useState(false);
 
   useEffect(() => {
     load();
     loadToken();
   }, []);
+
+  useEffect(() => {
+    if (githubToken.trim()) loadManifest(activeBuild);
+  }, [activeBuild, githubToken]);
 
   const load = async () => {
     try {
@@ -44,8 +73,14 @@ export default function AdminPanel({ username }: Props) {
     }
   };
 
-  const updatePassword = (index: number, password: string) => {
-    setAccounts(prev => prev.map((row, i) => i === index ? { ...row, password } : row));
+  const loadManifest = async (build: string) => {
+    try {
+      const data = await invoke<BuildManifest>("get_build_manifest", { build, githubToken });
+      setManifest(data);
+    } catch (e) {
+      setMessage(String(e));
+      setManifest(null);
+    }
   };
 
   const saveToken = async (token: string) => {
@@ -55,6 +90,10 @@ export default function AdminPanel({ username }: Props) {
     } catch {
       // token will still stay in state until restart
     }
+  };
+
+  const updatePassword = (index: number, password: string) => {
+    setAccounts(prev => prev.map((row, i) => i === index ? { ...row, password } : row));
   };
 
   const addAccount = () => {
@@ -101,12 +140,89 @@ export default function AdminPanel({ username }: Props) {
     }
   };
 
+  const updateManifest = (patch: Partial<BuildManifest>) => {
+    setManifest(prev => prev ? { ...prev, ...patch } : prev);
+  };
+
+  const updateMod = (index: number, patch: Partial<BuildFileEntry>) => {
+    setManifest(prev => prev ? {
+      ...prev,
+      mods: prev.mods.map((mod, i) => i === index ? { ...mod, ...patch } : mod),
+    } : prev);
+  };
+
+  const deleteMod = (mod: BuildFileEntry) => {
+    const ok = window.confirm(`Удалить мод ${mod.name} из списка сборки? Файл в GitHub пока останется, но клиент перестанет его скачивать.`);
+    if (!ok) return;
+    setManifest(prev => prev ? { ...prev, mods: prev.mods.filter(m => m.name !== mod.name) } : prev);
+  };
+
+  const downloadMod = (mod: BuildFileEntry) => window.open(mod.url, "_blank");
+
+  const downloadBuild = () => {
+    if (!manifest) return;
+    manifest.mods.forEach(mod => {
+      if (mod.enabled) window.open(mod.url, "_blank");
+    });
+  };
+
+  const uploadModPath = async (path: string) => {
+    if (!manifest || !path) return;
+    setUploadingMod(true);
+    setMessage(`Загружаю мод ${path}...`);
+    try {
+      const entry = await invoke<BuildFileEntry>("upload_build_mod", {
+        build: activeBuild,
+        githubToken,
+        filePath: path,
+        targetName: null,
+      });
+      setManifest(prev => prev ? {
+        ...prev,
+        mods: [...prev.mods.filter(m => m.name !== entry.name), entry],
+      } : prev);
+      setMessage(`Мод ${entry.name} загружен. Нажмите «Сохранить manifest», чтобы он вошёл в сборку.`);
+    } catch (e) {
+      setMessage(String(e));
+    } finally {
+      setUploadingMod(false);
+    }
+  };
+
+  const onDropMod = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const files = Array.from(event.dataTransfer.files);
+    for (const file of files) {
+      const path = (file as any).path || (file as any).webkitRelativePath;
+      if (path) await uploadModPath(path);
+    }
+  };
+
+  const commitManifest = async () => {
+    if (!manifest) return;
+    setSaving(true);
+    setMessage("Отправляю manifest сборки на GitHub...");
+    try {
+      const result = await invoke<string>("commit_build_manifest", {
+        build: activeBuild,
+        githubToken,
+        manifest,
+      });
+      setMessage(result);
+    } catch (e) {
+      setMessage(String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="settings-panel admin-panel">
       <h2 style={{ marginBottom: 10, fontWeight: 800, fontSize: 22 }}>Админ-панель</h2>
-      <div className="admin-note">
-        Здесь можно менять пароли, добавлять игроков и удалять старых. После подтверждения лаунчер сам зашифрует
-        <b> public/auth/offline_accounts.rpwenc</b> и отправит commit в GitHub.
+
+      <div className="admin-tabs">
+        <button className={`settings-btn compact ${activeTab === "accounts" ? "accent" : ""}`} onClick={() => setActiveTab("accounts")}>Пароли</button>
+        <button className={`settings-btn compact ${activeTab === "builds" ? "accent" : ""}`} onClick={() => setActiveTab("builds")}>Сборки</button>
       </div>
 
       <div className="admin-token-box">
@@ -116,61 +232,79 @@ export default function AdminPanel({ username }: Props) {
           type="password"
           value={githubToken}
           onChange={e => saveToken(e.target.value)}
-          placeholder="github_pat_... или classic token с Contents: Read and write"
+          placeholder="github_pat_... с Contents: Read and write"
         />
       </div>
 
-      <div className="admin-add-box">
-        <div className="admin-account-name">Добавить игрока</div>
-        <input
-          className="admin-password-input"
-          value={newUsername}
-          onChange={e => setNewUsername(e.target.value)}
-          placeholder="Ник"
-        />
-        <input
-          className="admin-password-input"
-          type="password"
-          value={newPassword}
-          onChange={e => setNewPassword(e.target.value)}
-          placeholder="Пароль"
-        />
-        <button className="settings-btn" onClick={addAccount}>Добавить</button>
-      </div>
+      {activeTab === "accounts" && (
+        <>
+          <div className="admin-note">
+            Здесь можно менять пароли, добавлять игроков и удалять старых. После подтверждения лаунчер сам зашифрует
+            <b> public/auth/offline_accounts.rpwenc</b> и отправит commit в GitHub.
+          </div>
 
-      <div className="admin-account-list">
-        {accounts.map((account, index) => {
-          const visible = !!showPasswords[account.username];
-          return (
-            <div className="admin-account-row" key={account.username}>
-              <div className="admin-account-name">{account.username}</div>
-              <input
-                className="admin-password-input"
-                type={visible ? "text" : "password"}
-                value={account.password}
-                onChange={e => updatePassword(index, e.target.value)}
-              />
-              <button
-                className="settings-btn compact"
-                onClick={() => setShowPasswords(prev => ({ ...prev, [account.username]: !visible }))}
-              >
-                {visible ? "Скрыть" : "Показать"}
-              </button>
-              <button
-                className="settings-btn danger compact"
-                disabled={account.username.toLowerCase() === ADMIN_NAME.toLowerCase()}
-                onClick={() => deleteAccount(account)}
-              >
-                Удалить
-              </button>
-            </div>
-          );
-        })}
-      </div>
+          <div className="admin-add-box">
+            <div className="admin-account-name">Добавить игрока</div>
+            <input className="admin-password-input" value={newUsername} onChange={e => setNewUsername(e.target.value)} placeholder="Ник" />
+            <input className="admin-password-input" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Пароль" />
+            <button className="settings-btn" onClick={addAccount}>Добавить</button>
+          </div>
 
-      <button className="settings-btn accent" onClick={commitChanges} disabled={saving || !githubToken.trim()}>
-        {saving ? "Отправка..." : "Подтвердить и отправить commit"}
-      </button>
+          <div className="admin-account-list">
+            {accounts.map((account, index) => {
+              const visible = !!showPasswords[account.username];
+              return (
+                <div className="admin-account-row" key={account.username}>
+                  <div className="admin-account-name">{account.username}</div>
+                  <input className="admin-password-input" type={visible ? "text" : "password"} value={account.password} onChange={e => updatePassword(index, e.target.value)} />
+                  <button className="settings-btn compact" onClick={() => setShowPasswords(prev => ({ ...prev, [account.username]: !visible }))}>{visible ? "Скрыть" : "Показать"}</button>
+                  <button className="settings-btn danger compact" disabled={account.username.toLowerCase() === ADMIN_NAME.toLowerCase()} onClick={() => deleteAccount(account)}>Удалить</button>
+                </div>
+              );
+            })}
+          </div>
+          <button className="settings-btn accent" onClick={commitChanges} disabled={saving || !githubToken.trim()}>{saving ? "Отправка..." : "Подтвердить и отправить commit"}</button>
+        </>
+      )}
+
+      {activeTab === "builds" && (
+        <div className="admin-build-panel">
+          <div className="admin-tabs">
+            {BUILD_NAMES.map(build => <button key={build} className={`settings-btn compact ${activeBuild === build ? "accent" : ""}`} onClick={() => setActiveBuild(build)}>{build}</button>)}
+          </div>
+          {manifest && (
+            <>
+              <div className="admin-build-settings">
+                <label>Версия Minecraft<input className="admin-password-input" value={manifest.minecraft_version} onChange={e => updateManifest({ minecraft_version: e.target.value })} /></label>
+                <label>Загрузчик<select className="admin-password-input" value={manifest.loader} onChange={e => updateManifest({ loader: e.target.value })}>{LOADERS.map(loader => <option key={loader} value={loader}>{loader}</option>)}</select></label>
+                <label>Версия загрузчика<input className="admin-password-input" value={manifest.loader_version || ""} onChange={e => updateManifest({ loader_version: e.target.value })} placeholder="можно пусто = latest" /></label>
+              </div>
+
+              <div className="admin-drop-zone" onDragOver={e => e.preventDefault()} onDrop={onDropMod}>
+                {uploadingMod ? "Загрузка мода..." : "Перетащите .jar мод сюда, чтобы загрузить его в GitHub"}
+              </div>
+
+              <div className="admin-build-actions">
+                <button className="settings-btn" onClick={downloadBuild}>Скачать сборку</button>
+                <button className="settings-btn accent" onClick={commitManifest} disabled={saving || !githubToken.trim()}>Сохранить manifest</button>
+              </div>
+
+              <div className="admin-mod-list">
+                {manifest.mods.map((mod, index) => (
+                  <div className="admin-mod-row" key={`${mod.name}-${mod.sha1}`}>
+                    <input className="admin-password-input" value={mod.name} onChange={e => updateMod(index, { name: e.target.value, path: `mods/${e.target.value}`, url: mod.url.replace(/mods\/[^/]+$/, `mods/${encodeURIComponent(e.target.value)}`) })} />
+                    <div className="admin-mod-meta">{formatSize(mod.size)}</div>
+                    <label className="admin-mod-enabled"><input type="checkbox" checked={mod.enabled} onChange={e => updateMod(index, { enabled: e.target.checked })} /> Вкл.</label>
+                    <button className="settings-btn compact" onClick={() => downloadMod(mod)}>Скачать</button>
+                    <button className="settings-btn danger compact" onClick={() => deleteMod(mod)}>Удалить</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {message && <div className="admin-message">{message}</div>}
     </div>
   );

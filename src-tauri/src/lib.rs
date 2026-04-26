@@ -1,6 +1,6 @@
 mod commands;
 
-use commands::{auth, downloader, java, launcher, logger, settings, updater, versions};
+use commands::{auth, builds, downloader, java, launcher, logger, settings, updater, versions};
 use tauri::Manager;
 
 #[cfg(windows)]
@@ -123,6 +123,10 @@ pub fn run() {
             auth::encrypt_admin_accounts,
             auth::commit_admin_accounts,
             auth::logout,
+            // Build admin
+            builds::get_build_manifest,
+            builds::commit_build_manifest,
+            builds::upload_build_mod,
             // Launcher
             launcher::launch_game,
             launcher::get_launch_progress,
