@@ -328,14 +328,20 @@ fn apply_nsis_update(app: tauri::AppHandle, installer: &PathBuf) -> Result<(), S
     //  3. Remove temporary files
     let script = format!(
         "$ErrorActionPreference = 'Continue'\r\n\
-         Add-Content -Path '{log}' -Value \"[$(Get-Date)] updater script started\"\r\n\
-         Start-Sleep -Seconds 5\r\n\
-         Add-Content -Path '{log}' -Value \"[$(Get-Date)] running installer: {installer}\"\r\n\
-         $p = Start-Process -FilePath '{installer}' -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden\r\n\
-         Add-Content -Path '{log}' -Value \"[$(Get-Date)] installer exit code: $($p.ExitCode)\"\r\n\
-         Remove-Item -LiteralPath '{installer}' -Force -ErrorAction SilentlyContinue\r\n\
-         Add-Content -Path '{log}' -Value \"[$(Get-Date)] updater script finished\"\r\n\
-         Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\r\n",
+         function Write-UpdateLog([string]$Message) {{ Add-Content -LiteralPath '{log}' -Value ('[' + (Get-Date) + '] ' + $Message) }}\r\n\
+         try {{\r\n\
+           Write-UpdateLog 'updater script started'\r\n\
+           Start-Sleep -Seconds 5\r\n\
+           Write-UpdateLog 'running installer: {installer}'\r\n\
+           $p = Start-Process -FilePath '{installer}' -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden\r\n\
+           Write-UpdateLog ('installer exit code: ' + $p.ExitCode)\r\n\
+           Remove-Item -LiteralPath '{installer}' -Force -ErrorAction SilentlyContinue\r\n\
+           Write-UpdateLog 'updater script finished'\r\n\
+         }} catch {{\r\n\
+           Write-UpdateLog ('updater script error: ' + $_.Exception.Message)\r\n\
+         }} finally {{\r\n\
+           Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\r\n\
+         }}\r\n",
         installer = installer_str.replace('\'', "''"),
         log = update_log_file.replace('\'', "''"),
     );
