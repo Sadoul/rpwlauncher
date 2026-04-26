@@ -25,7 +25,14 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
   const [loader, setLoader] = useState(custom?.loader ?? builtin?.loader ?? "forge");
   const [mcVersion, setMcVersion] = useState(custom?.mc_version ?? builtin?.mcVersion ?? "1.20.1");
   const [loaderVersion, setLoaderVersion] = useState(custom?.loader_version ?? builtin?.loaderVersion ?? "");
-  const [memory, setMemory] = useState(custom?.max_memory ?? builtin?.memory ?? 4096);
+  const [memory, setMemory] = useState(() => {
+    if (!isCustom) {
+      const saved = localStorage.getItem(`rpw_modpack_memory_${page}`);
+      const parsed = saved ? Number(saved) : NaN;
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    return custom?.max_memory ?? builtin?.memory ?? 4096;
+  });
   const [jvmArgs, setJvmArgs] = useState(custom?.jvm_args ?? builtin?.jvmArgs ?? "");
   const [gameDir, setGameDir] = useState(custom?.game_dir ?? "");
   const [message, setMessage] = useState("");
@@ -52,7 +59,8 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
 
   const save = async () => {
     if (!isCustom) {
-      setMessage("Настройки встроенных сборок сохраняются через Админ → Сборки. Локальные аргументы/ОЗУ будут добавлены отдельным профилем позже.");
+      localStorage.setItem(`rpw_modpack_memory_${page}`, String(memory));
+      setMessage("ОЗУ сборки сохранено локально");
       return;
     }
     try {
@@ -87,7 +95,9 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
     }
   };
 
+  const isBuiltin = !isCustom;
   const locked = page === "minigames";
+  const configLocked = isBuiltin;
 
   return (
     <div className="settings-panel modpack-settings-panel">
@@ -106,7 +116,7 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
         </div>
         <div className="admin-card">
           <label>Тип загрузчика</label>
-          <select value={loader} onChange={(e) => setLoader(e.target.value)} disabled={locked}>
+          <select value={loader} onChange={(e) => setLoader(e.target.value)} disabled={configLocked}>
             <option value="vanilla">Vanilla</option>
             <option value="forge">Forge</option>
             <option value="fabric">Fabric</option>
@@ -116,11 +126,11 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
         </div>
         <div className="admin-card">
           <label>Версия Minecraft</label>
-          <input value={mcVersion} onChange={(e) => setMcVersion(e.target.value)} disabled={locked} />
+          <input value={mcVersion} onChange={(e) => setMcVersion(e.target.value)} disabled={configLocked} />
         </div>
         <div className="admin-card">
           <label>Версия загрузчика</label>
-          <input value={loaderVersion} onChange={(e) => setLoaderVersion(e.target.value)} disabled={locked} />
+          <input value={loaderVersion} onChange={(e) => setLoaderVersion(e.target.value)} disabled={configLocked} />
         </div>
         <div className="admin-card">
           <label>ОЗУ сборки</label>
@@ -131,7 +141,7 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
         </div>
         <div className="admin-card wide">
           <label>JVM аргументы</label>
-          <textarea value={jvmArgs} onChange={(e) => setJvmArgs(e.target.value)} rows={4} placeholder="Например: -XX:+UseG1GC" />
+          <textarea value={jvmArgs} onChange={(e) => setJvmArgs(e.target.value)} rows={4} placeholder="Например: -XX:+UseG1GC" disabled={configLocked} />
         </div>
         <div className="admin-card wide">
           <label>Папка сборки</label>
@@ -143,7 +153,7 @@ export default function ModpackSettingsPanel({ page, customModpacks, onBack, onC
       </div>
 
       <div className="modpack-settings-actions">
-        <button className="settings-btn primary" onClick={save} disabled={locked}>Сохранить настройки</button>
+        <button className="settings-btn primary" onClick={save}>Сохранить настройки</button>
         <button className="settings-btn danger" onClick={deletePack}>Удалить сборку с компьютера</button>
       </div>
       {message && <div className="admin-message">{message}</div>}

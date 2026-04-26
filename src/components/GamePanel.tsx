@@ -184,9 +184,10 @@ export default function GamePanel({
     }, 500);
 
     try {
-      const { appLocalDataDir } = await import("@tauri-apps/api/path");
-      const baseDir = await appLocalDataDir();
-      const gameDir = customPack?.game_dir || (baseDir + "\\modpacks\\" + config.modpackName);
+      const gameDir = customPack?.game_dir || await invoke<string>("get_builtin_modpack_dir", { modpackName: config.modpackName });
+
+      const savedBuiltinMemory = !customPack ? Number(localStorage.getItem(`rpw_modpack_memory_${config.modpackName}`)) : NaN;
+      const effectiveMemory = customPack?.max_memory ?? (!Number.isNaN(savedBuiltinMemory) ? savedBuiltinMemory : maxMemory);
 
       await invoke("launch_game", {
         username: account.username,
@@ -194,7 +195,7 @@ export default function GamePanel({
         accessToken: account.access_token,
         version: config.defaultVersion,
         javaPath,
-        maxMemory: customPack?.max_memory ?? maxMemory,
+        maxMemory: effectiveMemory,
         gameDir,
         jvmArgs: customPack?.jvm_args ?? jvmArgs,
         gpuMode,

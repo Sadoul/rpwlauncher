@@ -246,7 +246,7 @@ export default function Sidebar({ currentPage, onPageChange, account, onLogout, 
   const openContextMenu = (event: React.MouseEvent, item: NavItem) => {
     event.preventDefault();
     event.stopPropagation();
-    if (item.id === "settings") return;
+    if (item.id === "settings" || item.id === "custom" || item.id === "admin") return;
     setContextMenu({ x: event.clientX, y: event.clientY, item });
   };
   const handleDiscord = async () => {

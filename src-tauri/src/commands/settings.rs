@@ -89,10 +89,7 @@ fn open_folder_path(dir: &Path) -> Result<(), String> {
 }
 
 fn builtin_modpacks_root() -> PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("com.rpworld.launcher")
-        .join("modpacks")
+    data_dir().join("modpacks")
 }
 
 fn sanitize_modpack_name(name: &str) -> Result<String, String> {
