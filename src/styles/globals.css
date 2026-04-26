@@ -1677,8 +1677,9 @@ button { font-family: inherit; }
    ══════════════════════════════════════════════════════════════ */
 .notification-stack {
   position: fixed;
-  top: max(12px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
+  top: max(58px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+
   width: min(520px, calc(100vw - 24px));
   display: flex;
   flex-direction: column;

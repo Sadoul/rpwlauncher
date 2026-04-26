@@ -59,9 +59,11 @@ export default function AdminPanel({ username, isOwner }: Props) {
   const [availableVersions, setAvailableVersions] = useState<string[]>([]);
   const [downloadDir, setDownloadDir] = useState("");
   const lastDropKeyRef = useRef("");
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
 
   useEffect(() => {
+
 
     load();
     loadToken();
@@ -102,6 +104,20 @@ export default function AdminPanel({ username, isOwner }: Props) {
     }).then(fn => { unlisten = fn; }).catch(error => notify(`Drag & drop недоступен: ${String(error)}`));
     return () => { if (unlisten) unlisten(); };
   }, [isOwner, activeTab, manifest, activeBuild, githubToken]);
+
+  useEffect(() => {
+    if (!isOwner || activeTab !== "builds") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Control" || event.repeat) return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const nearBottom = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 24;
+      panel.scrollTo({ top: nearBottom ? 0 : panel.scrollHeight, behavior: "smooth" });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOwner, activeTab]);
+
 
 
   const notify = (text: string) => {
@@ -352,7 +368,8 @@ export default function AdminPanel({ username, isOwner }: Props) {
   };
 
   return (
-    <div className="settings-panel admin-panel">
+    <div className="settings-panel admin-panel" ref={panelRef}>
+
       <h2 style={{ marginBottom: 10, fontWeight: 800, fontSize: 22 }}>Админ-панель</h2>
 
       <div className="admin-main-tabs">
