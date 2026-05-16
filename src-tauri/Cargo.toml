@@ -1,6 +1,6 @@
 [package]
 name = "rpw-launcher"
-version = "2.70.1"
+version = "2.70.2"
 description = "RPWorld Minecraft Launcher"
 authors = ["Sadoul"]
 edition = "2021"

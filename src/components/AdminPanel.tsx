@@ -50,8 +50,6 @@ export default function AdminPanel({ username, isOwner }: Props) {
 
   const [saving, setSaving] = useState(false);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
-  const [newUsername, setNewUsername] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [activeBuild, setActiveBuild] = useState("rpworld");
   const [manifest, setManifest] = useState<BuildManifest | null>(null);
   const [uploadingMod, setUploadingMod] = useState(false);
@@ -168,24 +166,6 @@ export default function AdminPanel({ username, isOwner }: Props) {
 
   const updatePassword = (index: number, password: string) => {
     setAccounts(prev => prev.map((row, i) => i === index ? { ...row, password } : row));
-  };
-
-  const addAccount = () => {
-    const nextUsername = newUsername.trim();
-    const nextPassword = newPassword.trim();
-    if (!nextUsername || !nextPassword) {
-      setMessage("Введите ник и пароль нового игрока");
-      return;
-    }
-    if (accounts.some(a => a.username.toLowerCase() === nextUsername.toLowerCase())) {
-      setMessage(`Игрок ${nextUsername} уже есть`);
-      return;
-    }
-    setAccounts(prev => [...prev, { username: nextUsername, password: nextPassword }]);
-    setNewUsername("");
-    setNewPassword("");
-      notify(`Игрок ${nextUsername} добавлен локально. Нажмите подтверждение, чтобы отправить commit.`);
-
   };
 
   const deleteAccount = (account: AccountRow) => {
@@ -403,13 +383,6 @@ export default function AdminPanel({ username, isOwner }: Props) {
           <div className="admin-note">
             Здесь можно менять пароли, добавлять игроков и удалять старых. После подтверждения лаунчер сам зашифрует
             <b> public/auth/offline_accounts.rpwenc</b> и отправит commit в GitHub.
-          </div>
-
-          <div className="admin-add-box">
-            <div className="admin-account-name">Добавить игрока</div>
-            <input className="admin-password-input" value={newUsername} onChange={e => setNewUsername(e.target.value)} placeholder="Ник" />
-            <input className="admin-password-input" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Пароль" />
-            <button className="settings-btn" onClick={addAccount}>Добавить</button>
           </div>
 
           <div className="admin-account-list">
